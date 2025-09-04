@@ -13,7 +13,7 @@ gem "decidim-templates", DECIDIM_VERSION
 # Read more: https://github.com/mainio/decidim-module-term_customizer
 gem "decidim-term_customizer", git: "https://github.com/mainio/decidim-module-term_customizer.git", branch: "main"
 gem "decidim-verify_wo_registration", git: "https://github.com/CodiTramuntana/decidim-verify_wo_registration.git", branch: "master"
-gem "decidim-decidim_awesome", git: "https://github.com/decidim-ice/decidim-module-decidim_awesome.git", branch: "users_autoblock"
+gem "decidim-decidim_awesome", git: "https://github.com/decidim-ice/decidim-module-decidim_awesome.git", branch: "release/0.28-stable" # branch: "users_autoblock"
 
 gem 'doorkeeper', '5.7.0'
 

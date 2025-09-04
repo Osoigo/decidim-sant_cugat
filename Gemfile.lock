@@ -10,10 +10,10 @@ GIT
 
 GIT
   remote: https://github.com/decidim-ice/decidim-module-decidim_awesome.git
-  revision: 37d34374c86a8114f6eb8890ae3b616edf5c662e
-  branch: users_autoblock
+  revision: 4a9679e6384b8c34690a3b5b7eea917de46618a2
+  branch: release/0.28-stable
   specs:
-    decidim-decidim_awesome (0.11.2)
+    decidim-decidim_awesome (0.11.5)
       decidim-admin (>= 0.28.0, < 0.29)
       decidim-core (>= 0.28.0, < 0.29)
       deface (>= 1.5)
