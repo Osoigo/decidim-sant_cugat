@@ -24,7 +24,7 @@ gem "progressbar"
 gem "json", "2.9.1"
 
 # Performance
-gem "appsignal"
+# gem "appsignal"
 
 group :development, :test do
   gem 'byebug', platform: :mri
