@@ -37,6 +37,9 @@ group :development do
 end
 
 group :production, :staging do
+  # # passenger 6 and later (currently 6.0.27) incompatibility with rackup 1.0.1  https://github.com/phusion/passenger/issues/2602
+  # gem "passenger", "5.3.7", require: "phusion_passenger/rack_handler"
+  gem "passenger", git: "https://github.com/phusion/passenger.git", branch: "stable-6.1"
   gem 'dalli'
   gem 'sendgrid-ruby'
   gem 'sidekiq', '~> 6.5', '>= 6.5.7'
