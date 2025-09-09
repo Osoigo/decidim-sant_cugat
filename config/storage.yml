@@ -8,9 +8,10 @@ local:
 
 amazon:
   service: S3
+  endpoint: <%= Rails.application.secrets.dig(:storage, :s3, :endpoint) %>
   access_key_id: <%= Rails.application.secrets.dig(:storage, :s3, :access_key_id) %>
   secret_access_key: <%= Rails.application.secrets.dig(:storage, :s3, :secret_access_key) %>
-  region: eu-west-1
+  region: <%= Rails.application.secrets.dig(:storage, :s3, :region) %>
   bucket: <%= Rails.application.secrets.dig(:storage, :s3, :bucket) %>
   public: true
 
@@ -35,7 +36,6 @@ gcs:
     token_uri: <%= Rails.application.secrets.dig(:storage, :gcs, :token_uri) %>
     auth_provider_x509_cert_url: <%= Rails.application.secrets.dig(:storage, :gcs, :auth_provider_x509_cert_url) %>
     client_x509_cert_url: <%= Rails.application.secrets.dig(:storage, :gcs, :client_x509_cert_url) %>
-
 # mirror:
 #   service: Mirror
 #   primary: local
