@@ -5,7 +5,8 @@ Decidim.configure do |config|
   config.application_name = Rails.application.secrets.decidim[:application_name]
 
   # The email that will be used as sender in all emails from Decidim
-  config.mailer_sender = Rails.env.production? ? "participacio@santcugat.cat" : "noreply@decidim-review-apps.populate.tools"
+  # config.mailer_sender = Rails.env.production? ? "participacio@santcugat.cat" : "noreply@decidim.osoigonext.com"
+  config.mailer_sender = Rails.application.secrets.decidim[:mailer_sender]
 
   # Sets the list of available locales for the whole application.
   #
