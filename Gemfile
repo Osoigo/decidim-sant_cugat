@@ -6,6 +6,7 @@ ruby '3.1.2'
 
 DECIDIM_VERSION = { git: "https://github.com/decidim/decidim.git", branch: "release/0.28-stable" }.freeze
 
+gem 'dotenv-rails', '~> 2.1', '>= 2.1.1'
 gem 'decidim', DECIDIM_VERSION
 gem "decidim-templates", DECIDIM_VERSION
 

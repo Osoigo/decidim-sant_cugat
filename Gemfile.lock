@@ -397,6 +397,10 @@ GEM
     doorkeeper (5.7.0)
       railties (>= 5)
     doorkeeper-i18n (4.0.1)
+    dotenv (2.8.1)
+    dotenv-rails (2.8.1)
+      dotenv (= 2.8.1)
+      railties (>= 3.2)
     erb_lint (0.4.0)
       activesupport
       better_html (>= 2.0.1)
@@ -892,6 +896,7 @@ DEPENDENCIES
   decidim-term_customizer!
   decidim-verify_wo_registration!
   doorkeeper (= 5.7.0)
+  dotenv-rails (~> 2.1, >= 2.1.1)
   excon (>= 0.71.0)
   faker
   fog-aws
