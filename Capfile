@@ -36,3 +36,9 @@ install_plugin Capistrano::SCM::Git
 
 # Load custom tasks from `lib/capistrano/tasks` if you have any defined
 Dir.glob("lib/capistrano/tasks/*.rake").each { |r| import r }
+
+# Install sidekiq plugin
+require 'capistrano/sidekiq'
+install_plugin Capistrano::Sidekiq  # Default sidekiq tasks (REQUIRED!)
+install_plugin Capistrano::Sidekiq::Systemd  # Systemd integration (REQUIRED!)
+
