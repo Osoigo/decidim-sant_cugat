@@ -36,7 +36,6 @@ group :development do
   gem 'listen'
   gem 'spring-commands-rspec'
   gem 'capistrano', '~> 3.17', require: false
-  gem 'capistrano-sidekiq'
 end
 
 group :production, :staging do

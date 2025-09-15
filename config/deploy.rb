@@ -37,11 +37,3 @@ append :linked_dirs, "log", "tmp/pids", "tmp/cache", "tmp/sockets", "public/syst
 
 # Uncomment the following to require manually verifying the host key before first deploy.
 # set :ssh_options, verify_host_key: :secure
-
-# Sidekiq configuration
-set :sidekiq_roles, :worker                  # Default role for Sidekiq processes
-set :sidekiq_default_hooks, true             # Enable default deployment hooks
-set :sidekiq_env, fetch(:stage)              # Environment for Sidekiq processes
-
-# Single config file
-set :sidekiq_config_files, ['sidekiq.yml']
