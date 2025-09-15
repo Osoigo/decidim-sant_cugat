@@ -31,6 +31,7 @@ server "santcugat-pre.osoigonext.com", user: "debian", roles: %w{app db web}
 # http://capistranorb.com/documentation/getting-started/configuration/
 # Feel free to add new variables to customise your setup.
 
+set :branch, ENV['branch'] || :master
 
 
 # Custom SSH Options
