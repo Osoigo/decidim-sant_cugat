@@ -306,6 +306,7 @@ GEM
     base64 (0.2.0)
     batch-loader (1.5.0)
     bcrypt (3.1.20)
+    bcrypt_pbkdf (1.1.1)
     better_html (2.1.1)
       actionview (>= 6.0)
       activesupport (>= 6.0)
@@ -325,6 +326,9 @@ GEM
       i18n
       rake (>= 10.0.0)
       sshkit (>= 1.9.0)
+    capistrano-rvm (0.1.2)
+      capistrano (~> 3.0)
+      sshkit (~> 1.2)
     capybara (3.40.0)
       addressable
       matrix
@@ -408,6 +412,7 @@ GEM
     dotenv-rails (2.8.1)
       dotenv (= 2.8.1)
       railties (>= 3.2)
+    ed25519 (1.4.0)
     erb_lint (0.4.0)
       activesupport
       better_html (>= 2.0.1)
@@ -905,8 +910,10 @@ PLATFORMS
 
 DEPENDENCIES
   aws-sdk-s3
+  bcrypt_pbkdf (>= 1.0, < 2.0)
   byebug
   capistrano (~> 3.17)
+  capistrano-rvm
   dalli
   database_cleaner
   decidim!
@@ -917,6 +924,7 @@ DEPENDENCIES
   decidim-verify_wo_registration!
   doorkeeper (= 5.7.0)
   dotenv-rails (~> 2.1, >= 2.1.1)
+  ed25519 (>= 1.2, < 2.0)
   excon (>= 0.71.0)
   faker
   fog-aws
