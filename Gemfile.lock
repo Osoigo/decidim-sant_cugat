@@ -918,6 +918,7 @@ DEPENDENCIES
   bcrypt_pbkdf (>= 1.0, < 2.0)
   byebug
   capistrano (~> 3.17)
+  capistrano-bundler
   capistrano-rails
   capistrano-rvm
   dalli
