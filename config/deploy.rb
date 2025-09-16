@@ -41,6 +41,11 @@ append :linked_dirs, "log", "tmp/pids", "tmp/cache", "tmp/sockets", "storage", "
 # RVM settings
 set :rvm_type, :system # Defines the RVM path to /usr/local/rvm
 
+# NVM settings
+set :nvm_type, :user # or :system, depends on your nvm setup
+set :nvm_node, 'v18.20.8'
+set :nvm_map_bins, %w{rails rake node npm yarn}
+
 # Hooks
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
 before 'deploy:assets:precompile', 'deploy:npm:install'
