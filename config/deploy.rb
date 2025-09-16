@@ -48,6 +48,9 @@ set :nvm_map_bins, %w{rails rake node npm yarn}
 
 set :assets_manifest, 'public/decidim-packs/manifest.json'
 
+# Passenger settings
+set :passenger_restart_with_touch, false
+
 # Hooks
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
 before 'deploy:assets:precompile', 'deploy:npm:install'

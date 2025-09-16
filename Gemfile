@@ -40,6 +40,7 @@ group :development do
   gem 'capistrano-bundler'
   gem 'capistrano-rails', require: false
   gem 'capistrano-nvm', require: false
+  gem 'capistrano-passenger'
 
   gem 'ed25519', '>= 1.2', '< 2.0'
   gem 'bcrypt_pbkdf', '>= 1.0', '< 2.0'
