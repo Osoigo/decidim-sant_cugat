@@ -54,6 +54,7 @@ set :passenger_restart_with_touch, false
 # Hooks
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
 before 'deploy:assets:precompile', 'deploy:npm:install'
+after 'deploy:publishing', 'sidekiq:restart'
 
 namespace :deploy do
   namespace :npm do
@@ -89,3 +90,13 @@ namespace :deploy do
     end
   end
 end
+
+namespace :sidekiq do
+  desc "Restart Sidekiq (user systemd)"
+  task :restart do
+    on roles(:app) do |host|
+      execute :systemctl, "--user restart sidekiq"
+    end
+  end
+end
+
