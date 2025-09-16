@@ -46,6 +46,8 @@ set :nvm_type, :user # or :system, depends on your nvm setup
 set :nvm_node, 'v18.20.8'
 set :nvm_map_bins, %w{rails rake node npm yarn}
 
+set :assets_manifest, 'public/decidim-packs/manifest.json'
+
 # Hooks
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
 before 'deploy:assets:precompile', 'deploy:npm:install'
@@ -56,6 +58,29 @@ namespace :deploy do
       on roles(:web) do
         within release_path do
           execute :npm, 'install --silent --no-progress'
+        end
+      end
+    end
+  end
+end
+
+Rake::Task["deploy:assets:backup_manifest"].clear
+
+namespace :deploy do
+  namespace :assets do
+    desc "Backup the custom manifest file"
+    task :backup_manifest do
+      on roles(fetch(:assets_roles)) do
+        within release_path do
+          manifest_path = File.join(release_path, fetch(:assets_manifest))
+          backup_dir = "#{release_path}/assets_manifest_backup"
+          execute :mkdir, "-p", backup_dir
+          if test("[ -f #{manifest_path} ]")
+            execute :cp, manifest_path, backup_dir
+          else
+            error "Custom Rails assets manifest file not found at #{manifest_path}."
+            exit 1
+          end
         end
       end
     end
