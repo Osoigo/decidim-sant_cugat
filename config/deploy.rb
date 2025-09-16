@@ -43,3 +43,16 @@ set :rvm_type, :system # Defines the RVM path to /usr/local/rvm
 
 # Hooks
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
+before 'deploy:assets:precompile', 'deploy:npm:install'
+
+namespace :deploy do
+  namespace :npm do
+    task :install do
+      on roles(:web) do
+        within release_path do
+          execute :npm, 'install --silent --no-progress'
+        end
+      end
+    end
+  end
+end
