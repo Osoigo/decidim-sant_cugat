@@ -40,3 +40,6 @@ append :linked_dirs, "log", "tmp/pids", "tmp/cache", "tmp/sockets", "storage", "
 
 # RVM settings
 set :rvm_type, :system # Defines the RVM path to /usr/local/rvm
+
+# Hooks
+before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
