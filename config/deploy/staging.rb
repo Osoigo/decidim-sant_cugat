@@ -3,7 +3,7 @@
 # Defines a single server with a list of roles and multiple properties.
 # You can define all roles on a single server, or split them:
 
-server "santcugat-pre.osoigonext.com", user: "debian", roles: %w{app db web}
+server "santcugat-pre.osoigonext.com", user: "debian", roles: %w{app db web worker}
 # server "example.com", user: "deploy", roles: %w{app web}, other_property: :other_value
 # server "db.example.com", user: "deploy", roles: %w{db}
 

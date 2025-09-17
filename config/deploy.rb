@@ -94,7 +94,7 @@ end
 namespace :sidekiq do
   desc "Restart Sidekiq (user systemd)"
   task :restart do
-    on roles(:app) do |host|
+    on roles(:worker) do |host|
       execute :systemctl, "--user restart sidekiq"
     end
   end
