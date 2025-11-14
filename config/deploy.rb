@@ -98,5 +98,19 @@ namespace :sidekiq do
       execute :systemctl, "--user restart sidekiq"
     end
   end
+
+  desc "Stop Sidekiq (user systemd)"
+  task :stop do
+    on roles(:worker) do |host|
+      execute :systemctl, "--user stop sidekiq"
+    end
+  end
+
+  desc "Start Sidekiq (user systemd)"
+  task :start do
+    on roles(:worker) do |host|
+      execute :systemctl, "--user start sidekiq"
+    end
+  end
 end
 
