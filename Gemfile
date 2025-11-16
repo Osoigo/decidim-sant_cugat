@@ -6,6 +6,7 @@ ruby '3.1.2'
 
 DECIDIM_VERSION = { git: "https://github.com/decidim/decidim.git", branch: "release/0.28-stable" }.freeze
 
+gem 'dotenv-rails', '~> 2.1', '>= 2.1.1'
 gem 'decidim', DECIDIM_VERSION
 gem "decidim-templates", DECIDIM_VERSION
 
@@ -13,7 +14,7 @@ gem "decidim-templates", DECIDIM_VERSION
 # Read more: https://github.com/mainio/decidim-module-term_customizer
 gem "decidim-term_customizer", git: "https://github.com/mainio/decidim-module-term_customizer.git", branch: "main"
 gem "decidim-verify_wo_registration", git: "https://github.com/CodiTramuntana/decidim-verify_wo_registration.git", branch: "master"
-gem "decidim-decidim_awesome", git: "https://github.com/decidim-ice/decidim-module-decidim_awesome.git", branch: "users_autoblock"
+gem "decidim-decidim_awesome", git: "https://github.com/decidim-ice/decidim-module-decidim_awesome.git", branch: "release/0.28-stable" # branch: "users_autoblock"
 
 gem 'doorkeeper', '5.7.0'
 
@@ -24,7 +25,7 @@ gem "progressbar"
 gem "json", "2.9.1"
 
 # Performance
-gem "appsignal"
+# gem "appsignal"
 
 group :development, :test do
   gem 'byebug', platform: :mri
@@ -37,6 +38,9 @@ group :development do
 end
 
 group :production, :staging do
+  # # passenger 6 and later (currently 6.0.27) incompatibility with rackup 1.0.1  https://github.com/phusion/passenger/issues/2602
+  # gem "passenger", "5.3.7", require: "phusion_passenger/rack_handler"
+  gem "passenger", git: "https://github.com/phusion/passenger.git", branch: "stable-6.1"
   gem 'dalli'
   gem 'sendgrid-ruby'
   gem 'sidekiq', '~> 6.5', '>= 6.5.7'
