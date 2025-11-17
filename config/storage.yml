@@ -13,8 +13,6 @@ amazon:
   secret_access_key: <%= Rails.application.secrets.dig(:storage, :s3, :secret_access_key) %>
   region: <%= Rails.application.secrets.dig(:storage, :s3, :region) %>
   bucket: <%= Rails.application.secrets.dig(:storage, :s3, :bucket) %>
-  force_path_style: true
-  public: true
 
 azure:
   service: AzureStorage
