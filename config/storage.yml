@@ -14,6 +14,8 @@ amazon:
   region: <%= Rails.application.secrets.dig(:storage, :s3, :region) %>
   bucket: <%= Rails.application.secrets.dig(:storage, :s3, :bucket) %>
   public: true
+  upload:
+    acl: public-read
 
 azure:
   service: AzureStorage
