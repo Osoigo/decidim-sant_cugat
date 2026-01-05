@@ -2,9 +2,9 @@
 
 source 'https://rubygems.org'
 
-ruby '3.1.2'
+ruby '3.2.2'
 
-DECIDIM_VERSION = { git: "https://github.com/decidim/decidim.git", branch: "release/0.28-stable" }.freeze
+DECIDIM_VERSION = { git: "https://github.com/decidim/decidim.git", branch: "release/0.29-stable" }.freeze
 
 gem 'dotenv-rails', '~> 2.1', '>= 2.1.1'
 gem 'decidim', DECIDIM_VERSION
@@ -12,9 +12,10 @@ gem "decidim-templates", DECIDIM_VERSION
 
 # A Decidim module to customize the localized terms in the system.
 # Read more: https://github.com/mainio/decidim-module-term_customizer
-gem "decidim-term_customizer", git: "https://github.com/mainio/decidim-module-term_customizer.git", branch: "main"
+# TODO: Re-enable when 0.29 compatible version is available
+# gem "decidim-term_customizer", git: "https://github.com/mainio/decidim-module-term_customizer.git", branch: "main"
 gem "decidim-verify_wo_registration", git: "https://github.com/CodiTramuntana/decidim-verify_wo_registration.git", branch: "master"
-gem "decidim-decidim_awesome", git: "https://github.com/decidim-ice/decidim-module-decidim_awesome.git", branch: "release/0.28-stable" # branch: "users_autoblock"
+gem "decidim-decidim_awesome", git: "https://github.com/decidim-ice/decidim-module-decidim_awesome.git", branch: "release/0.29-stable"
 
 gem 'doorkeeper', '5.7.0'
 

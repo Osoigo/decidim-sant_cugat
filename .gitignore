@@ -30,6 +30,8 @@ public/uploads
 /public/decidim-packs
 /public/packs
 /public/packs-test
+/public/sw.js
+/public/sw.js.map
 /node_modules
 /packages/webpacker/node_modules
 /packages/core/node_modules
