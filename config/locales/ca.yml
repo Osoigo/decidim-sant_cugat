@@ -28,6 +28,11 @@ ca:
           district: Barri
           district_council: Consell de Barri
           document_number: Número de document
+    verifications:
+      id_documents:
+        dni: DNI
+        nie: NIE
+        passport: Passaport
     shared:
       action_authorization_modal:
         expired:
