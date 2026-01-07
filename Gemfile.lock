@@ -200,6 +200,15 @@ GIT
       decidim-core (= 0.29.7)
 
 GIT
+  remote: https://github.com/openpoke/decidim-module-term_customizer.git
+  revision: 12d3c4f09e0a136e3d5533966c0d983edbb02564
+  branch: release/0.29-stable
+  specs:
+    decidim-term_customizer (0.29.1)
+      decidim-admin (~> 0.29.0)
+      decidim-core (~> 0.29.0)
+
+GIT
   remote: https://github.com/phusion/passenger.git
   revision: 76d454044748fa89ea34c3ae07ee1476617bcd3c
   branch: stable-6.1
@@ -970,6 +979,7 @@ DEPENDENCIES
   decidim-decidim_awesome!
   decidim-dev!
   decidim-templates!
+  decidim-term_customizer!
   decidim-verify_wo_registration!
   doorkeeper (= 5.7.0)
   dotenv-rails (~> 2.1, >= 2.1.1)

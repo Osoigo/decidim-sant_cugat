@@ -12,8 +12,8 @@ gem "decidim-templates", DECIDIM_VERSION
 
 # A Decidim module to customize the localized terms in the system.
 # Read more: https://github.com/mainio/decidim-module-term_customizer
-# TODO: Re-enable when 0.29 compatible version is available
-# gem "decidim-term_customizer", git: "https://github.com/mainio/decidim-module-term_customizer.git", branch: "main"
+# Using openpoke's fork with 0.29 support (actively maintained)
+gem "decidim-term_customizer", git: "https://github.com/openpoke/decidim-module-term_customizer.git", branch: "release/0.29-stable"
 gem "decidim-verify_wo_registration", git: "https://github.com/CodiTramuntana/decidim-verify_wo_registration.git", branch: "master"
 gem "decidim-decidim_awesome", git: "https://github.com/decidim-ice/decidim-module-decidim_awesome.git", branch: "release/0.29-stable"
 
