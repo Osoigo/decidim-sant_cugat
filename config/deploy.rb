@@ -38,8 +38,11 @@ append :linked_dirs, "log", "tmp/pids", "tmp/cache", "tmp/sockets", "storage", "
 # Uncomment the following to require manually verifying the host key before first deploy.
 # set :ssh_options, verify_host_key: :secure
 
-# RVM settings
+# RVM settings (rvm1-capistrano3)
 set :rvm_type, :system # Defines the RVM path to /usr/local/rvm
+set :rvm_install_ruby, :install # Automatically install Ruby if not present
+set :rvm_install_with_sudo, true # Use sudo for system-wide installation
+set :rvm_autolibs_flag, "read-only" # Use system libraries
 
 # NVM settings
 set :nvm_type, :user # or :system, depends on your nvm setup

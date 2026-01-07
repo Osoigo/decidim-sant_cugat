@@ -37,7 +37,7 @@ group :development do
   gem 'listen'
   gem 'spring-commands-rspec'
   gem 'capistrano', '~> 3.17', require: false
-  gem 'capistrano-rvm'
+  gem 'rvm1-capistrano3', require: false
   gem 'capistrano-bundler'
   gem 'capistrano-rails', require: false
   gem 'capistrano-nvm', require: false
