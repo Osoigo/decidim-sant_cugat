@@ -39,9 +39,8 @@ append :linked_dirs, "log", "tmp/pids", "tmp/cache", "tmp/sockets", "storage", "
 # set :ssh_options, verify_host_key: :secure
 
 # RVM settings (rvm1-capistrano3)
-set :rvm_type, :system # Defines the RVM path to /usr/local/rvm
+set :rvm_type, :user # Use user-specific RVM installation (in debian's home)
 set :rvm_install_ruby, :install # Automatically install Ruby if not present
-set :rvm_install_with_sudo, true # Use sudo for system-wide installation
 set :rvm_autolibs_flag, "read-only" # Use system libraries
 
 # NVM settings
