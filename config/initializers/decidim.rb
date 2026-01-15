@@ -46,12 +46,14 @@ Decidim.configure do |config|
   # See Decidim docs at https://docs.decidim.org/en/develop/services/maps.html
   # for more information about how it works and how to set it up.
   #
-  # == HERE Maps ==
-   config.maps = {
-     provider: :here,
-     api_key: Rails.application.secrets.maps[:api_key],
-     static: { url: "https://image.maps.ls.hereapi.com/mia/1.6/mapview" }
-   }
+  # == HERE Maps v3 ==
+  config.maps = {
+    provider: :here,
+    api_key: Rails.application.secrets.maps[:api_key],
+    static: {
+      url: "https://image.maps.hereapi.com/mia/v3/base/mc/overlay"
+    }
+  }
 
   # == OpenStreetMap (OSM) services ==
   # To use the OSM map service providers, you will need a service provider for
