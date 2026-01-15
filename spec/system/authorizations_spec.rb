@@ -6,7 +6,6 @@ describe "Authorizations", type: :system, perform_enqueued: true, with_authoriza
   let(:organization) do
     create(
       :organization,
-      name: "Ajuntament",
       default_locale: :ca,
       available_locales: [:ca],
       available_authorizations: authorizations

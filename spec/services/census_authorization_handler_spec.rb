@@ -8,7 +8,8 @@ describe CensusAuthorizationHandler do
   let(:handler) { described_class.from_params(params) }
   let(:date_of_birth) { Date.civil(1987, 9, 17) }
   let(:document_number) { "12345678A" }
-  let(:user) { create :user }
+  let(:organization) { create(:organization, available_locales: [:ca], default_locale: :ca) }
+  let(:user) { create(:user, locale: :ca, organization: organization) }
   let(:params) do
     {
       user: user,
