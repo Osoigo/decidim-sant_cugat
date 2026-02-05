@@ -57,7 +57,6 @@ set :passenger_restart_with_touch, false
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
 before 'deploy:assets:precompile', 'deploy:yarn:install'
 after 'deploy:publishing', 'sidekiq:restart'
-after 'deploy:migrate', 'deploy:decidim_0_29_release_update_tasks'
 
 namespace :deploy do
   namespace :yarn do
@@ -65,26 +64,6 @@ namespace :deploy do
       on roles(:web) do
         within release_path do
           execute :yarn, 'install --ignore-engines'
-        end
-      end
-    end
-  end
-
-  desc "Run Decidim 0.29 release update tasks"
-  task :decidim_0_29_release_update_tasks do
-    on roles(:app) do
-      within release_path do
-        with rails_env: fetch(:rails_env) do
-          info "Running Decidim 0.29 upgrade tasks..."
-          execute :rake, 'decidim:upgrade'
-          execute :rake, 'decidim:upgrade:clean:invalid_records'
-          execute :rake, 'decidim:upgrade:clean:fix_orphan_categorizations'
-          execute :rake, 'decidim:upgrade:attachments_cleanup'
-          execute :rake, 'decidim_proposals:upgrade:set_categories'
-          execute :rake, 'decidim:upgrade:clean:clean_deleted_users'
-          execute :rake, 'decidim:upgrade:fix_nickname_casing'
-          execute :rake, 'decidim:upgrade:clean:hidden_resources'
-          info "Decidim 0.29 upgrade tasks completed!"
         end
       end
     end
