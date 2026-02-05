@@ -41,6 +41,7 @@ yarn-debug.log*
 
 # Env vars
 .rbenv-vars
+.env
 
 # Static files
 app/views/static/
