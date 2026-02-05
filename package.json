@@ -19,6 +19,9 @@
     "jsrender": "^1.0.15",
     "leaflet.featuregroup.subgroup": "^1.0.2",
     "marked": "^5.1.2",
+    "graphql-ws": "^5.16.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "select2": "^4.1.0-rc.0",
     "tom-select": "^2.2.2"
   },
