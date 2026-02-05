@@ -1,4 +1,7 @@
+# frozen_string_literal: true
+
 # This migration comes from decidim (originally 20170221094835)
+# This file has been modified by `decidim upgrade:migrations` task on 2026-02-05 15:38:44 UTC
 class AddScopesToProcesses < ActiveRecord::Migration[5.0]
   def change
     rename_column :decidim_participatory_processes, :scope, :meta_scope
