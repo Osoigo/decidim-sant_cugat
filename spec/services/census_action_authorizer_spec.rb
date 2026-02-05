@@ -5,7 +5,8 @@ require "rails_helper"
 describe CensusActionAuthorizer do
   subject { described_class.new(authorization, options, nil, nil).authorize }
 
-  let(:user) { create(:user, nickname: 'authorizing_user') }
+  let(:organization) { create(:organization, available_locales: [:ca], default_locale: :ca) }
+  let(:user) { create(:user, nickname: 'authorizing_user', locale: :ca, organization: organization) }
   let(:authorization) {}
   let(:options) { {} }
 

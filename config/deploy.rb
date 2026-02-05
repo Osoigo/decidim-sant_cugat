@@ -1,5 +1,5 @@
 # config valid for current version and patch releases of Capistrano
-lock "~> 3.19.2"
+lock "~> 3.20.0"
 
 set :application, "decidim"
 set :repo_url, "git@github.com:Osoigo/decidim-sant_cugat.git"
@@ -38,8 +38,10 @@ append :linked_dirs, "log", "tmp/pids", "tmp/cache", "tmp/sockets", "storage", "
 # Uncomment the following to require manually verifying the host key before first deploy.
 # set :ssh_options, verify_host_key: :secure
 
-# RVM settings
-set :rvm_type, :system # Defines the RVM path to /usr/local/rvm
+# RVM settings (rvm1-capistrano3)
+set :rvm_type, :user # Use user-specific RVM installation (in debian's home)
+set :rvm_install_ruby, :install # Automatically install Ruby if not present
+set :rvm_autolibs_flag, "read-only" # Use system libraries
 
 # NVM settings
 set :nvm_type, :user # or :system, depends on your nvm setup
@@ -53,15 +55,36 @@ set :passenger_restart_with_touch, false
 
 # Hooks
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
-before 'deploy:assets:precompile', 'deploy:npm:install'
+before 'deploy:assets:precompile', 'deploy:yarn:install'
 after 'deploy:publishing', 'sidekiq:restart'
+after 'deploy:migrate', 'deploy:decidim_0_29_release_update_tasks'
 
 namespace :deploy do
-  namespace :npm do
+  namespace :yarn do
     task :install do
       on roles(:web) do
         within release_path do
-          execute :npm, 'install --silent --no-progress'
+          execute :yarn, 'install --ignore-engines'
+        end
+      end
+    end
+  end
+
+  desc "Run Decidim 0.29 release update tasks"
+  task :decidim_0_29_release_update_tasks do
+    on roles(:app) do
+      within release_path do
+        with rails_env: fetch(:rails_env) do
+          info "Running Decidim 0.29 upgrade tasks..."
+          execute :rake, 'decidim:upgrade'
+          execute :rake, 'decidim:upgrade:clean:invalid_records'
+          execute :rake, 'decidim:upgrade:clean:fix_orphan_categorizations'
+          execute :rake, 'decidim:upgrade:attachments_cleanup'
+          execute :rake, 'decidim_proposals:upgrade:set_categories'
+          execute :rake, 'decidim:upgrade:clean:clean_deleted_users'
+          execute :rake, 'decidim:upgrade:fix_nickname_casing'
+          execute :rake, 'decidim:upgrade:clean:hidden_resources'
+          info "Decidim 0.29 upgrade tasks completed!"
         end
       end
     end
