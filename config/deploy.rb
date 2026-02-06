@@ -42,6 +42,7 @@ append :linked_dirs, "log", "tmp/pids", "tmp/cache", "tmp/sockets", "storage", "
 set :rvm_type, :user # Use user-specific RVM installation (in debian's home)
 set :rvm_install_ruby, :install # Automatically install Ruby if not present
 set :rvm_autolibs_flag, "read-only" # Use system libraries
+set :rvm_ruby_version, "ruby-3.3.4"
 
 # NVM settings
 set :nvm_type, :user # or :system, depends on your nvm setup
@@ -54,6 +55,7 @@ set :assets_manifest, 'public/decidim-packs/manifest.json'
 set :passenger_restart_with_touch, false
 
 # Hooks
+before 'bundler:config', 'rvm1:install:ruby'
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
 before 'deploy:assets:precompile', 'deploy:npm:install'
 after 'deploy:publishing', 'sidekiq:restart'
