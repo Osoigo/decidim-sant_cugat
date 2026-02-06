@@ -55,15 +55,15 @@ set :passenger_restart_with_touch, false
 
 # Hooks
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
-before 'deploy:assets:precompile', 'deploy:yarn:install'
+before 'deploy:assets:precompile', 'deploy:npm:install'
 after 'deploy:publishing', 'sidekiq:restart'
 
 namespace :deploy do
-  namespace :yarn do
+  namespace :npm do
     task :install do
       on roles(:web) do
         within release_path do
-          execute :yarn, 'install --ignore-engines'
+          execute :npm, 'install --silent --no-progress'
         end
       end
     end
