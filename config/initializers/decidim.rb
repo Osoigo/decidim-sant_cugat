@@ -387,7 +387,7 @@ Decidim.configure do |config|
     "img-src" => %w('self' *.hereapi.com data: *.amazonaws.com decidim.santcugat.cat *.blogspot.com blogger.googleusercontent.com *.io.cloud.ovh.net),
     "font-src" => %w('self' fonts.gstatic.com maxcdn.bootstrapcdn.com),
     "connect-src" => %w('self' *.hereapi.com *.jsdelivr.net *.amazonaws.com fonts.googleapis.com maxcdn.bootstrapcdn.com *.io.cloud.ovh.net),
-    "frame-src" => %w('self' *.youtube.com www.youtube-nocookie.com),
+    "frame-src" => %w('self' *.youtube.com www.youtube-nocookie.com fastly.picsum.photos),
     "media-src" => %w('self')
   }
 
