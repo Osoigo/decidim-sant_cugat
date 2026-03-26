@@ -35,6 +35,9 @@ ca:
         dni: DNI
         nie: NIE
         passport: Passaport
+      census_authorization:
+        extra_explanation:
+          minimum_age: La participació està restringida a les persones de %{min_age} anys o més.
     shared:
       action_authorization_modal:
         expired:
@@ -57,6 +60,4 @@ ca:
         district_councils:
           one: La participació està restringida a les persones adscrites al consell de barri %{district_concils}.
           other: 'La participació està restringida a les persones adscrites a algun dels següents consells de barri: %{district_councils}.'
-        minimum_age:
-          one: La participació està restringida a les persones de %{min_age} anys o més.
-          other: La participació està restringida a les persones de %{min_age} anys o més.
+        minimum_age: La participació està restringida a les persones de %{min_age} anys o més.
