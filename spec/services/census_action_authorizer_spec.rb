@@ -160,5 +160,40 @@ describe CensusActionAuthorizer do
           end
         end
     end
+
+    context "with min_age option" do
+      let(:options) { { 'min_age' => '65' } }
+
+      context "when the authorization includes a birth date for a user old enough" do
+        let(:authorization) { create(:authorization, :granted, user: user, metadata: { 'date_of_birth' => 66.years.ago.to_date.iso8601 }) }
+
+        it "grants authorization" do
+          expect(subject).to eq([:ok, {}])
+        end
+      end
+
+      context "when the authorization includes a birth date for a user that is too young" do
+        let(:authorization) { create(:authorization, :granted, user: user, metadata: { 'date_of_birth' => 64.years.ago.to_date.iso8601 }) }
+
+        it "doesn't grant authorization" do
+          expected_data = {
+            extra_explanation: [{
+              key: "extra_explanation.minimum_age",
+              params: { min_age: 65, scope: "decidim.verifications.census_authorization" }
+            }]
+          }
+
+          expect(subject).to eq([:unauthorized, expected_data])
+        end
+      end
+
+      context "when the authorization lacks the stored birth date" do
+        let(:authorization) { create(:authorization, :granted, user: user) }
+
+        it "asks the user to reauthorize" do
+          expect(subject).to eq([:incomplete, { fields: ["date_of_birth"], action: :reauthorize, cancel: true }])
+        end
+      end
+    end
   end
 end

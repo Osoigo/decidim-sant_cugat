@@ -6,6 +6,7 @@ ca:
         district: Barri
         district_council: Consell de Barri
         document_number: Número de DNI
+        min_age: Edat mínima
   census_authorization:
     form:
       date_select:
@@ -28,6 +29,7 @@ ca:
           district: Barri
           district_council: Consell de Barri
           document_number: Número de document
+          min_age: Edat mínima
     verifications:
       id_documents:
         dni: DNI
@@ -55,3 +57,6 @@ ca:
         district_councils:
           one: La participació està restringida a les persones adscrites al consell de barri %{district_concils}.
           other: 'La participació està restringida a les persones adscrites a algun dels següents consells de barri: %{district_councils}.'
+        minimum_age:
+          one: La participació està restringida a les persones de %{min_age} anys o més.
+          other: La participació està restringida a les persones de %{min_age} anys o més.

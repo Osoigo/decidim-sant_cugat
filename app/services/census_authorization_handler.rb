@@ -32,6 +32,7 @@ class CensusAuthorizationHandler < Decidim::AuthorizationHandler
     {
       district_council: response["consellBarri"]&.strip,
       district: response["barri"]&.strip,
+      date_of_birth: date_of_birth&.iso8601,
       document_number: document_number,
     }
   end

@@ -85,6 +85,10 @@ describe CensusAuthorizationHandler do
       it "includes the district council" do
         expect(handler.metadata[:district_council]).to eq("1")
       end
+
+      it "includes the date of birth" do
+        expect(handler.metadata[:date_of_birth]).to eq("1987-09-17")
+      end
     end
 
     describe "document_number" do
