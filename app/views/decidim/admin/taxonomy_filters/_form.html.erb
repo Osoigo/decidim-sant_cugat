@@ -1,0 +1,154 @@
+<!-- [OVERRIDE] taxonomy_filters/_form.html.erb from decidim-sant_cugat app -->
+<% Rails.logger.info("[TAXONOMY_FILTER_OVERRIDE] Loading local _form.html.erb override for taxonomy_filters") %>
+<div class="form__wrapper">
+  <div class="card pt-4">
+    <div class="card-section">
+      <div class="row column">
+        <%= form.text_field :root_taxonomy_id, value: translated_attribute(root_taxonomy.name), disabled: true, class: "w-full" %>
+        <%= form.hidden_field :root_taxonomy_id %>
+      </div>
+    </div>
+    <div class="card-section">
+      <div class="row column">
+        <%= form.translated :text_field, :name, aria: { label: :name }, placeholder: translated_attribute(root_taxonomy.name), help_text: t(".name_help") %>
+      </div>
+      <div class="row column">
+        <%= form.translated :text_field, :internal_name, aria: { label: :internal_name }, placeholder: translated_attribute(root_taxonomy.name) %>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-section">
+      <% if root_taxonomy.children.any? %>
+        <div class="card-divider">
+          <h2><%= t(".items", count: "<strong class=\"js-filter-children-count\">#{root_taxonomy.all_children.count}</strong>").html_safe %></h2>
+        </div>
+
+        <div class="row column">
+          <style>#taxonomy-tree-container { contain: strict; height: 50vh; overflow-y: auto; }</style>
+          <div id="taxonomy-tree-container">
+            <label><%= check_box_tag "selectAll" %> <%= t(".all") %></label>
+            <%
+              selected_items = @form.taxonomy_items.map(&:to_s)
+              render_tree = ->(items, depth = 0) {
+                capture do
+                  items.each do |item|
+                    checked = selected_items.include?(item.value.to_s)
+                    concat content_tag(:div, style: "padding-left: #{depth * 1.25}rem", data: { depth: depth }) {
+                      cb = check_box_tag("taxonomy_filter[taxonomy_items][]", item.value, checked, autocomplete: "off", data: { abide_ignore: true, disable_dynamic_change: true })
+                      content_tag(:label) { cb + " ".html_safe + item.name }
+                    }
+                    if item.children.any?
+                      concat render_tree.call(item.children, depth + 1)
+                    end
+                  end
+                end
+              }
+            %>
+            <%= hidden_field_tag "taxonomy_filter[taxonomy_items][]", "", autocomplete: "off" %>
+            <%= render_tree.call(@form.items_collection) %>
+          </div>
+        </div>
+      <% else %>
+        <div class="card-divider">
+          <h2><%= t(".no_items") %></h2>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-section">
+      <div class="card-divider">
+        <h2><%= t(".space_filter") %></h2>
+      </div>
+      <div class="row column">
+        <%= form.collection_check_boxes :participatory_space_manifests, @form.available_participatory_space_manifests, :id, :name do |b| %>
+          <div>
+            <%= b.label { b.check_box + b.text } %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // IIFE: register document-level capture listener immediately (before jQuery's DOMContentLoaded
+  // handlers run) so we intercept change events before Foundation Abide / FormFilterComponent.
+  // Document capture fires before any form-level bubble handler regardless of registration order.
+  (function() {
+    var container = null;
+    var countEl = null;
+    var checkedCount = 0;
+
+    // Cascade check/uncheck through depth-first sibling rows with greater data-depth.
+    // O(descendants) for parent nodes, O(1) for leaves.
+    var cascadeCheck = function(row, checked) {
+      var depth = parseInt(row.dataset.depth, 10);
+      var delta = 0;
+      var sibling = row.nextElementSibling;
+      while (sibling) {
+        var sibDepth = parseInt(sibling.dataset.depth, 10);
+        if (isNaN(sibDepth) || sibDepth <= depth) break;
+        var childCb = sibling.querySelector("input[name='taxonomy_filter[taxonomy_items][]']");
+        if (childCb && childCb.checked !== checked) {
+          childCb.checked = checked;
+          delta += checked ? 1 : -1;
+        }
+        sibling = sibling.nextElementSibling;
+      }
+      return delta;
+    };
+
+    // Document-level capture: fires before form-level bubble handlers (Foundation Abide, FormFilterComponent).
+    // Also intercepts mouseout/mouseleave from our container so Foundation doesn't iterate 660 inputs
+    // in response to the CSS :checked repaint that shifts element bounds on every click.
+    var blockFromContainer = function(e) {
+      if (container && container.contains(e.target)) {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+    document.addEventListener("mouseout",   blockFromContainer, true);
+    document.addEventListener("mouseleave", blockFromContainer, true);
+    document.addEventListener("focusout",   blockFromContainer, true);
+
+    document.addEventListener("change", function(e) {
+      if (!container || !container.contains(e.target)) return;
+
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      var target = e.target;
+
+      if (target.name === "selectAll") {
+        var allCbs = container.querySelectorAll("input[name='taxonomy_filter[taxonomy_items][]']");
+        var count = 0;
+        allCbs.forEach(function(cb) {
+          cb.checked = target.checked;
+          if (target.checked) count++;
+        });
+        checkedCount = count;
+        if (countEl) countEl.textContent = checkedCount;
+        return;
+      }
+
+      if (target.name === "taxonomy_filter[taxonomy_items][]") {
+        checkedCount += target.checked ? 1 : -1;
+        var row = target.closest("div[data-depth]");
+        if (row) checkedCount += cascadeCheck(row, target.checked);
+        if (countEl) countEl.textContent = checkedCount;
+      }
+    }, true);
+
+    document.addEventListener("DOMContentLoaded", function() {
+      container = document.getElementById("taxonomy-tree-container");
+      if (!container) return;
+      countEl = document.querySelector(".js-filter-children-count");
+      checkedCount = container.querySelectorAll("input[name='taxonomy_filter[taxonomy_items][]']:checked").length;
+      if (countEl) countEl.textContent = checkedCount;
+    });
+  })();
+</script>
