@@ -1,0 +1,233 @@
+<section class="map-block home__section">
+  <%= content_tag("h3", section_title) if section_title.present? %>
+
+  <%= awesome_map_for global_map_components do %>
+    <%= render partial: "decidim/decidim_awesome/map_component/map/map_template.html", locals: { taxonomies: all_taxonomies, map_height: model.settings.map_height } %>
+  <% end %>
+</section>
+
+<script id="marker-result-popup" type="text/x-jsrender">
+  <div class="space-y-6">
+    <div class="card__list">
+      <div class="card__list-content">
+        <a href="{{>url}}" target="result">
+          <h3 class="h4 card__list-title">{{:titleText}}</h3>
+          <div class="card__list-metadata">
+            <span class="label muted"><%= t("activerecord.models.decidim/accountability/result", count: 1) %></span>
+          </div>
+          {{if address}}
+            <div class="text-sm">{{>address}}</div>
+          {{/if}}
+        </a>
+        {{if descriptionText}}
+          <div class="description">
+            {{:descriptionText}}
+          </div>
+        {{/if}}
+      </div>
+    </div>
+  </div>
+</script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const components = <%= accountability_map_components.map { |component|
+      {
+        id: component.id,
+        url: Decidim::EngineRouter.main_proxy(component).root_path
+      }
+    }.to_json.html_safe %>;
+
+    if (!components.length) return;
+
+    const query = `query ($id: ID!, $after: String!) {
+      component(id: $id) {
+        ... on Accountability {
+          results(first: 50, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            edges {
+              node {
+                id
+                url
+                address
+                coordinates {
+                  latitude
+                  longitude
+                }
+                title {
+                  translations {
+                    text
+                    locale
+                  }
+                }
+                description {
+                  translations {
+                    text
+                    locale
+                  }
+                }
+                taxonomies {
+                  id
+                }
+              }
+            }
+          }
+        }
+      }
+    }`;
+
+    const htmlLang = document.documentElement.getAttribute("lang");
+
+    const findTranslation = (field) => {
+      const translations = field?.translations || [];
+      let fallback = "";
+
+      translations.forEach((translation) => {
+        if (!translation.text) return;
+        if (!fallback) fallback = translation.text;
+        if (translation.locale === htmlLang) fallback = translation.text;
+      });
+
+      return fallback;
+    };
+
+    const addTaxonomies = (awesomeMap, marker, node) => {
+      if (!node.taxonomies || !node.taxonomies.length) return;
+
+      node.taxonomies.forEach((taxonomy) => {
+        const tax = awesomeMap.getTaxonomy(taxonomy);
+        if (awesomeMap.layers[tax.id] && awesomeMap.layers[tax.id].group) {
+          try {
+            awesomeMap.layers[tax.id].group.addLayer(marker);
+            if (awesomeMap.controls && awesomeMap.controls.showTaxonomy) {
+              awesomeMap.controls.showTaxonomy(tax);
+            }
+          } catch (error) {
+            console.error("Failed taxonomy marker assignation", taxonomy, error);
+          }
+        }
+      });
+    };
+
+    const createResultIcon = (awesomeMap, node) => {
+      const color = awesomeMap.getTaxonomy(node.taxonomies && node.taxonomies[0]).color;
+      const size = 36;
+
+      return L.divIcon({
+        html: `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}px" height="${size}px" class="text-secondary" style="color: ${color}"><path fill="none" d="M0 0h24v24H0z"/><path fill="currentColor" d="M18.364 17.364L12 23.728l-6.364-6.364a9 9 0 1 1 12.728 0zM12 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0-2a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>`,
+        iconAnchor: [0.5 * size, size],
+        popupAnchor: [0, -0.5 * size]
+      });
+    };
+
+    const addResultMarker = (awesomeMap, component, node) => {
+      if (!node.coordinates || !node.coordinates.latitude || !node.coordinates.longitude) return;
+
+      node.titleText = findTranslation(node.title);
+      node.descriptionText = findTranslation(node.description);
+      node.url = node.url || `${component.url}/results/${node.id}`;
+
+      const marker = new L.Marker([node.coordinates.latitude, node.coordinates.longitude], {
+        keyboard: true,
+        title: node.titleText,
+        icon: createResultIcon(awesomeMap, node)
+      });
+
+      marker.on("click", () => {
+        const dom = document.createElement("div");
+        dom.innerHTML = $.templates("#marker-result-popup").render(node);
+        const popup = L.popup({
+          maxwidth: 640,
+          minWidth: 500,
+          keepInView: true,
+          className: "map-info"
+        }).setLatLng(marker.getLatLng()).setContent(dom);
+        awesomeMap.map.addLayer(popup);
+      });
+
+      awesomeMap.cluster.addLayer(marker);
+      addTaxonomies(awesomeMap, marker, node);
+    };
+
+    const fetchResults = (awesomeMap, component, after = "") => {
+      $.ajax({
+        method: "POST",
+        url: "/api",
+        contentType: "application/json",
+        data: JSON.stringify({
+          query,
+          variables: { id: component.id, after }
+        })
+      }).done((response) => {
+        const collection = response?.data?.component?.results;
+        if (!collection) return;
+
+        (collection.edges || []).forEach((edge) => {
+          if (!edge || !edge.node) return;
+          addResultMarker(awesomeMap, component, edge.node);
+        });
+
+        if (collection.pageInfo && collection.pageInfo.hasNextPage) {
+          fetchResults(awesomeMap, component, collection.pageInfo.endCursor || "");
+        } else {
+          awesomeMap.autoResize();
+        }
+      });
+    };
+
+    const hideDefaultLayers = (awesomeMap, attemptsLeft = 20) => {
+      const proposalsToggles = document.querySelectorAll(".awesome_map-component[data-layer='proposals']");
+      const meetingsToggles = document.querySelectorAll(".awesome_map-component[data-layer='meetings']");
+      const hasToggles = proposalsToggles.length > 0 || meetingsToggles.length > 0;
+
+      if (!hasToggles && attemptsLeft > 0) {
+        window.setTimeout(() => hideDefaultLayers(awesomeMap, attemptsLeft - 1), 150);
+        return;
+      }
+
+      ["proposals", "meetings"].forEach((layerName) => {
+        const labels = document.querySelectorAll(`.awesome_map-component[data-layer='${layerName}']`);
+        labels.forEach((label) => {
+          const checkbox = label.closest("label")?.querySelector("input[type='checkbox']");
+          if (checkbox) checkbox.checked = false;
+        });
+
+        const layer = awesomeMap.layers[layerName];
+        if (layer?.group) {
+          awesomeMap.map.removeLayer(layer.group);
+        }
+      });
+    };
+
+    const hideStuckLoadingSpinner = (awesomeMap, attemptsLeft = 20) => {
+      const hasPendingLoads = Array.isArray(awesomeMap.loading) && awesomeMap.loading.length > 0;
+
+      if (hasPendingLoads && attemptsLeft > 0) {
+        window.setTimeout(() => hideStuckLoadingSpinner(awesomeMap, attemptsLeft - 1), 150);
+        return;
+      }
+
+      const spinner = awesomeMap.controls && awesomeMap.controls.loading;
+      if (spinner) {
+        spinner.style.display = "none";
+      }
+    };
+
+    const waitForAwesomeMap = () => {
+      if (!window.AwesomeMap || !window.AwesomeMap.map || !window.AwesomeMap.cluster) {
+        window.setTimeout(waitForAwesomeMap, 150);
+        return;
+      }
+
+      hideDefaultLayers(window.AwesomeMap);
+      components.forEach((component) => fetchResults(window.AwesomeMap, component));
+      hideStuckLoadingSpinner(window.AwesomeMap);
+    };
+
+    waitForAwesomeMap();
+  });
+</script>
