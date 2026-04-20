@@ -53,6 +53,10 @@ ca:
           invalid_field: "%{field} no és correcte"
     verify_wo_registration:
        min_age_restricted: Ho sentim, la teva edat és inferior a la requerida per a aquesta activitat.
+    decidim_awesome:
+      content_blocks:
+        map:
+          show_accountability_results: Mostrar resultats
   verifications:
     census_authorization:
       extra_explanation:
