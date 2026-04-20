@@ -126,7 +126,7 @@
     };
 
     const addResultMarker = (awesomeMap, component, node) => {
-      if (!node.coordinates || !node.coordinates.latitude || !node.coordinates.longitude) return;
+      if (!node.coordinates || node.coordinates.latitude == null || node.coordinates.longitude == null) return;
 
       node.titleText = findTranslation(node.title);
       node.descriptionText = findTranslation(node.description);
@@ -154,7 +154,35 @@
       addTaxonomies(awesomeMap, marker, node);
     };
 
-    const fetchResults = (awesomeMap, component, after = "") => {
+    const startResultsLoading = (awesomeMap, component) => {
+      const loadingKey = `accountability-${component.id}`;
+      awesomeMap.loading = Array.isArray(awesomeMap.loading) ? awesomeMap.loading : [];
+
+      if (!awesomeMap.loading.includes(loadingKey)) {
+        awesomeMap.loading.push(loadingKey);
+      }
+
+      if (awesomeMap.controls && awesomeMap.controls.loading) {
+        awesomeMap.controls.loading.style.display = "block";
+      }
+
+      return loadingKey;
+    };
+
+    const finishResultsLoading = (awesomeMap, loadingKey) => {
+      if (!Array.isArray(awesomeMap.loading)) return;
+
+      const loadingIndex = awesomeMap.loading.indexOf(loadingKey);
+      if (loadingIndex >= 0) {
+        awesomeMap.loading.splice(loadingIndex, 1);
+      }
+
+      if (awesomeMap.loading.length === 0 && awesomeMap.controls && awesomeMap.controls.loading) {
+        awesomeMap.controls.loading.style.display = "none";
+      }
+    };
+
+    const fetchResults = (awesomeMap, component, loadingKey, after = "") => {
       $.ajax({
         method: "POST",
         url: "/api",
@@ -165,7 +193,10 @@
         })
       }).done((response) => {
         const collection = response?.data?.component?.results;
-        if (!collection) return;
+        if (!collection) {
+          finishResultsLoading(awesomeMap, loadingKey);
+          return;
+        }
 
         (collection.edges || []).forEach((edge) => {
           if (!edge || !edge.node) return;
@@ -173,10 +204,14 @@
         });
 
         if (collection.pageInfo && collection.pageInfo.hasNextPage) {
-          fetchResults(awesomeMap, component, collection.pageInfo.endCursor || "");
+          fetchResults(awesomeMap, component, loadingKey, collection.pageInfo.endCursor || "");
         } else {
           awesomeMap.autoResize();
+          finishResultsLoading(awesomeMap, loadingKey);
         }
+      }).fail((error) => {
+        console.error("Failed to fetch accountability results", component.id, error);
+        finishResultsLoading(awesomeMap, loadingKey);
       });
     };
 
@@ -204,20 +239,6 @@
       });
     };
 
-    const hideStuckLoadingSpinner = (awesomeMap, attemptsLeft = 20) => {
-      const hasPendingLoads = Array.isArray(awesomeMap.loading) && awesomeMap.loading.length > 0;
-
-      if (hasPendingLoads && attemptsLeft > 0) {
-        window.setTimeout(() => hideStuckLoadingSpinner(awesomeMap, attemptsLeft - 1), 150);
-        return;
-      }
-
-      const spinner = awesomeMap.controls && awesomeMap.controls.loading;
-      if (spinner) {
-        spinner.style.display = "none";
-      }
-    };
-
     const waitForAwesomeMap = () => {
       if (!window.AwesomeMap || !window.AwesomeMap.map || !window.AwesomeMap.cluster) {
         window.setTimeout(waitForAwesomeMap, 150);
@@ -225,8 +246,10 @@
       }
 
       hideDefaultLayers(window.AwesomeMap);
-      components.forEach((component) => fetchResults(window.AwesomeMap, component));
-      hideStuckLoadingSpinner(window.AwesomeMap);
+      components.forEach((component) => {
+        const loadingKey = startResultsLoading(window.AwesomeMap, component);
+        fetchResults(window.AwesomeMap, component, loadingKey);
+      });
     };
 
     waitForAwesomeMap();
