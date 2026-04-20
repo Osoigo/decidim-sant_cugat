@@ -69,7 +69,8 @@ describe "Homepage awesome map with accountability results", type: :system do
       scope_name: :homepage,
       settings: {
         map_height: 500,
-        taxonomy_ids: []
+        taxonomy_ids: [],
+        show_accountability_results: true
       }
     )
   end
