@@ -51,6 +51,10 @@ ca:
           explanation: Per dur a terme aquesta acció, has d'estar autoritzat/da amb el padró municipal.
         unauthorized:
           invalid_field: "%{field} no és correcte"
+    decidim_awesome:
+      content_blocks:
+        map:
+          show_accountability_results: Mostrar resultats d'accountability
   verifications:
     census_authorization:
       extra_explanation:
