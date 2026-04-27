@@ -117,7 +117,7 @@ Decidim.configure do |config|
     dynamic_provider = Rails.application.secrets.maps[:dynamic_provider]
     dynamic_url = Rails.application.secrets.maps[:dynamic_url]
     static_url = Rails.application.secrets.maps[:static_url]
-    static_url = "https://image.maps.ls.hereapi.com/mia/1.6/mapview" if static_provider == "here" && static_url.blank?
+    static_url = "https://image.maps.hereapi.com/mia/v3/base/mc/overlay" if static_provider == "here" && static_url.blank?
     config.maps = {
       provider: static_provider,
       api_key: Rails.application.secrets.maps[:static_api_key],
@@ -387,7 +387,7 @@ Decidim.configure do |config|
     "img-src" => %w('self' *.hereapi.com data: *.amazonaws.com decidim.santcugat.cat *.blogspot.com blogger.googleusercontent.com *.io.cloud.ovh.net),
     "font-src" => %w('self' fonts.gstatic.com maxcdn.bootstrapcdn.com),
     "connect-src" => %w('self' *.hereapi.com *.jsdelivr.net *.amazonaws.com fonts.googleapis.com maxcdn.bootstrapcdn.com *.io.cloud.ovh.net),
-    "frame-src" => %w('self' *.youtube.com www.youtube-nocookie.com),
+    "frame-src" => %w('self' *.youtube.com www.youtube-nocookie.com fastly.picsum.photos),
     "media-src" => %w('self')
   }
 

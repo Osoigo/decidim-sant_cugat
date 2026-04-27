@@ -42,6 +42,7 @@ append :linked_dirs, "log", "tmp/pids", "tmp/cache", "tmp/sockets", "storage", "
 set :rvm_type, :user # Use user-specific RVM installation (in debian's home)
 set :rvm_install_ruby, :install # Automatically install Ruby if not present
 set :rvm_autolibs_flag, "read-only" # Use system libraries
+set :rvm_ruby_version, "ruby-3.3.4"
 
 # NVM settings
 set :nvm_type, :user # or :system, depends on your nvm setup
@@ -54,16 +55,17 @@ set :assets_manifest, 'public/decidim-packs/manifest.json'
 set :passenger_restart_with_touch, false
 
 # Hooks
+before 'bundler:config', 'rvm1:install:ruby'
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
-before 'deploy:assets:precompile', 'deploy:yarn:install'
+before 'deploy:assets:precompile', 'deploy:npm:install'
 after 'deploy:publishing', 'sidekiq:restart'
 
 namespace :deploy do
-  namespace :yarn do
+  namespace :npm do
     task :install do
       on roles(:web) do
         within release_path do
-          execute :yarn, 'install --ignore-engines'
+          execute :npm, 'install --silent --no-progress'
         end
       end
     end
@@ -115,4 +117,124 @@ namespace :sidekiq do
     end
   end
 end
+
+namespace :decidim do
+  desc "Complete upgrade to Decidim 0.30 (run all necessary one-time tasks)"
+  task :upgrade_to_0_30 do
+    invoke 'decidim:set_proposal_categories'
+    invoke 'decidim:clean_deleted_users'
+    invoke 'decidim:fix_nickname_casing'
+    invoke 'decidim:attachments_cleanup'
+  end
+
+  desc "Complete upgrade to Decidim 0.30 including taxonomy migration"
+  task :upgrade_to_0_30_with_taxonomies do
+    invoke 'decidim:taxonomies:migrate_all'
+    invoke 'decidim:set_proposal_categories'
+    invoke 'decidim:clean_deleted_users'
+    invoke 'decidim:fix_nickname_casing'
+    invoke 'decidim:attachments_cleanup'
+  end
+
+  desc "Clean orphaned attachment blobs"
+  task :attachments_cleanup do
+    on roles(:app) do
+      within release_path do
+        with rails_env: fetch(:rails_env) do
+          execute :bundle, "exec rails decidim:upgrade:attachments_cleanup"
+        end
+      end
+    end
+  end
+
+  desc "Clean deleted users metadata"
+  task :clean_deleted_users do
+    on roles(:app) do
+      within release_path do
+        with rails_env: fetch(:rails_env) do
+          execute :bundle, "exec rails decidim:upgrade:clean:clean_deleted_users"
+        end
+      end
+    end
+  end
+
+  desc "Fix nickname casing (convert to lowercase)"
+  task :fix_nickname_casing do
+    on roles(:app) do
+      within release_path do
+        with rails_env: fetch(:rails_env) do
+          execute :bundle, "exec rails decidim:upgrade:fix_nickname_casing"
+        end
+      end
+    end
+  end
+
+  desc "Set categories on proposal amendments"
+  task :set_proposal_categories do
+    on roles(:app) do
+      within release_path do
+        with rails_env: fetch(:rails_env) do
+          execute :bundle, "exec rails decidim_proposals:upgrade:set_categories"
+        end
+      end
+    end
+  end
+
+  namespace :taxonomies do
+    desc "Create taxonomy migration plan"
+    task :make_plan do
+      on roles(:app) do
+        within release_path do
+          with rails_env: fetch(:rails_env) do
+            execute :bundle, "exec rails decidim:taxonomies:make_plan"
+          end
+        end
+      end
+    end
+
+    desc "Import all taxonomy plans"
+    task :import_all_plans do
+      on roles(:app) do
+        within release_path do
+          with rails_env: fetch(:rails_env) do
+            execute :bundle, "exec rails decidim:taxonomies:import_all_plans"
+          end
+        end
+      end
+    end
+
+    desc "Update metrics after taxonomy migration"
+    task :update_all_metrics do
+      on roles(:app) do
+        within release_path do
+          with rails_env: fetch(:rails_env) do
+            execute :bundle, "exec rails decidim:taxonomies:update_all_metrics"
+          end
+        end
+      end
+    end
+
+    desc "Full taxonomy migration workflow (make_plan + import + update_metrics)"
+    task :migrate_all do
+      invoke 'decidim:taxonomies:make_plan'
+      invoke 'decidim:taxonomies:import_all_plans'
+      invoke 'decidim:taxonomies:update_all_metrics'
+    end
+  end
+
+  namespace :metrics do
+    desc "Rebuild meetings metrics from a specific date (e.g., cap production decidim:metrics:rebuild_meetings[2019-01-01])"
+    task :rebuild_meetings, :start_date do |task, args|
+      on roles(:app) do
+        within release_path do
+          with rails_env: fetch(:rails_env) do
+            start_date = args[:start_date] || '2019-01-01'
+            execute :bundle, "exec rails decidim:metrics:rebuild[meetings,#{start_date}]"
+          end
+        end
+      end
+    end
+  end
+end
+
 

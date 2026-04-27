@@ -1,18 +1,16 @@
-# This migration comes from decidim (originally 20180206143340)
 # frozen_string_literal: true
 
+# This migration comes from decidim (originally 20180206143340)
+# This file has been modified by `decidim upgrade:migrations` task on 2026-02-05 15:38:44 UTC
 class FixReferenceForAllResources < ActiveRecord::Migration[5.1]
   def up
     models = ActiveRecord::Base.descendants.select { |c| c.included_modules.include?(Decidim::HasReference) }
 
     models.each do |model|
-      put "model: #{model}"
+      next unless model.table_exists?
+
       model.find_each(&:touch)
-      puts "."
-    rescue Exception => e
-      Rails.logger.warn "could not touch #{model}: #{e}"
     end
-    puts "DONE."
   end
 
   def down; end

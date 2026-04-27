@@ -56,6 +56,11 @@ Rails.application.configure do
   # config.active_job.queue_name_prefix = "decidim_sant_cugat_#{Rails.env}"
   config.action_mailer.perform_caching = false
 
+  # Disable email delivery in staging (no SMTP credentials configured)
+  # Emails will be captured but not sent, preventing Sidekiq retry loops
+  config.action_mailer.delivery_method = :test
+  config.action_mailer.raise_delivery_errors = false
+
   # Ignore bad email addresses and do not raise email delivery errors.
   # Set this to true and configure the email server for immediate delivery to raise delivery errors.
   # config.action_mailer.raise_delivery_errors = false
@@ -70,27 +75,28 @@ Rails.application.configure do
   # Use default logging formatter so that PID and timestamp are not suppressed.
   config.log_formatter = ::Logger::Formatter.new
 
-  config.action_mailer.smtp_settings = {
-    :address        => Rails.application.secrets.smtp_address,
-    :port           => Rails.application.secrets.smtp_port,
-    :authentication => Rails.application.secrets.smtp_authentication,
-    :user_name      => Rails.application.secrets.smtp_username,
-    :password       => Rails.application.secrets.smtp_password,
-    :domain         => Rails.application.secrets.smtp_domain,
-    :enable_starttls_auto => Rails.application.secrets.smtp_starttls_auto,
-    :openssl_verify_mode => 'none'
-  }
+  # SMTP settings disabled for staging - uncomment when credentials are available
+  # config.action_mailer.smtp_settings = {
+  #   :address        => Rails.application.secrets.smtp_address,
+  #   :port           => Rails.application.secrets.smtp_port,
+  #   :authentication => Rails.application.secrets.smtp_authentication,
+  #   :user_name      => Rails.application.secrets.smtp_username,
+  #   :password       => Rails.application.secrets.smtp_password,
+  #   :domain         => Rails.application.secrets.smtp_domain,
+  #   :enable_starttls_auto => Rails.application.secrets.smtp_starttls_auto,
+  #   :openssl_verify_mode => 'none'
+  # }
 
-  if Rails.application.secrets.sendgrid
-    config.action_mailer.default_options = {
-      "X-SMTPAPI" => {
-        filters:  {
-          clicktrack: { settings: { enable: 0 } },
-          opentrack:  { settings: { enable: 0 } }
-        }
-      }.to_json
-    }
-  end
+  # if Rails.application.secrets.sendgrid
+  #   config.action_mailer.default_options = {
+  #     "X-SMTPAPI" => {
+  #       filters:  {
+  #         clicktrack: { settings: { enable: 0 } },
+  #         opentrack:  { settings: { enable: 0 } }
+  #       }
+  #     }.to_json
+  #   }
+  # end
 
 
   # Use a different logger for distributed setups.
