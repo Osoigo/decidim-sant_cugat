@@ -59,6 +59,7 @@ before 'bundler:config', 'rvm1:install:ruby'
 before 'deploy:assets:precompile', 'deploy:symlink:linked_files'
 before 'deploy:assets:precompile', 'deploy:npm:install'
 after 'deploy:publishing', 'sidekiq:restart'
+after 'deploy:published', 'decidim:api:generate_docs'
 
 namespace :deploy do
   namespace :npm do
@@ -180,6 +181,19 @@ namespace :decidim do
     end
   end
 
+  namespace :api do
+    desc "Generate Decidim API docs. Runs after each deploy and can be rerun manually if needed"
+    task :generate_docs do
+      on roles(:app) do
+        within current_path do
+          with rails_env: fetch(:rails_env) do
+            execute :bundle, "exec bin/rake decidim_api:generate_docs"
+          end
+        end
+      end
+    end
+  end
+
   namespace :taxonomies do
     desc "Create taxonomy migration plan"
     task :make_plan do
@@ -236,5 +250,4 @@ namespace :decidim do
     end
   end
 end
-
 
