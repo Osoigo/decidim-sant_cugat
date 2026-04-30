@@ -101,6 +101,11 @@ Rails.application.configure do
     logger           = ActiveSupport::Logger.new(STDOUT)
     logger.formatter = config.log_formatter
     config.logger = ActiveSupport::TaggedLogging.new(logger)
+  else
+    # Rotate daily, keep 10 days of history.
+    logger = ActiveSupport::Logger.new(Rails.root.join("log", "#{Rails.env}.log"), 10, "daily")
+    logger.formatter = config.log_formatter
+    config.logger = ActiveSupport::TaggedLogging.new(logger)
   end
 
   # Do not dump schema after migrations.
