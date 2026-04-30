@@ -39,7 +39,7 @@ Rails.application.configure do
 
   # Use the lowest log level to ensure availability of diagnostic information
   # when problems arise.
-  config.log_level = :debug
+  config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").downcase.to_sym
 
   # Prepend all log lines with the following tags.
   config.log_tags = [ :request_id ]
@@ -105,6 +105,11 @@ Rails.application.configure do
 
   if ENV["RAILS_LOG_TO_STDOUT"].present?
     logger           = ActiveSupport::Logger.new(STDOUT)
+    logger.formatter = config.log_formatter
+    config.logger = ActiveSupport::TaggedLogging.new(logger)
+  else
+    # Rotate daily, keep 10 days of history.
+    logger = ActiveSupport::Logger.new(Rails.root.join("log", "#{Rails.env}.log"), 10, "daily")
     logger.formatter = config.log_formatter
     config.logger = ActiveSupport::TaggedLogging.new(logger)
   end
