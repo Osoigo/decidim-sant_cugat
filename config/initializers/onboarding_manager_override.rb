@@ -1,19 +1,23 @@
-# Baseline override copied from Decidim 0.30.5 to keep a clean diff for the patch.
+# Defensive backport for Decidim 0.30.x onboarding flow.
+# Keeps behavior close to upstream while avoiding crashes when user is nil
+# (e.g. verify_wo_registration paths reached without signed-in user).
 
 module Decidim
-  module OnboardingManager0305Base
+  module OnboardingManagerDefensiveBackport
     private
 
-    # Copied from Decidim::OnboardingManager#onboarding_data (v0.30.5)
     def onboarding_data
-      user.extended_data[Decidim::OnboardingManager::DATA_KEY] || {}
+      return {} if user.blank?
+
+      data = user.extended_data[Decidim::OnboardingManager::DATA_KEY]
+      data.is_a?(Hash) ? data : {}
     end
 
     public
 
-    # Copied from Decidim::OnboardingManager#valid? (v0.30.5)
     def valid?
-      return if action.blank?
+      return false if user.blank?
+      return false if action.blank?
 
       permissions_holder.present?
     end
@@ -22,6 +26,6 @@ end
 
 Rails.application.config.to_prepare do
   if defined?(Decidim::OnboardingManager)
-    Decidim::OnboardingManager.prepend(Decidim::OnboardingManager0305Base)
+    Decidim::OnboardingManager.prepend(Decidim::OnboardingManagerDefensiveBackport)
   end
 end
