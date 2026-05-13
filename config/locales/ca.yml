@@ -51,6 +51,8 @@ ca:
           explanation: Per dur a terme aquesta acció, has d'estar autoritzat/da amb el padró municipal.
         unauthorized:
           invalid_field: "%{field} no és correcte"
+    verify_wo_registration:
+       min_age_restricted: Ho sentim, la teva edat és inferior a la requerida per a aquesta activitat.
   verifications:
     census_authorization:
       extra_explanation:
