@@ -38,6 +38,7 @@
     let districtCouncilBoundariesLayer = null;
     let districtCouncilFeatures = [];
     const resultMarkers = [];
+    const districtCouncilGroups = {};
     const districtCouncilColors = {
       "Centre": "#fec544",
       "Les Planes": "#5bb357",
@@ -96,6 +97,7 @@
     }`;
 
     const htmlLang = document.documentElement.getAttribute("lang");
+    const districtCouncilFallbackName = htmlLang === "ca" ? "Sense consell" : "Without district council";
 
     const hideLoadingSpinner = (awesomeMap) => {
       if (awesomeMap.controls && awesomeMap.controls.loading) {
@@ -106,6 +108,26 @@
     const districtCouncilColorFor = (feature) => {
       const name = feature?.properties?.name;
       return districtCouncilColors[name] || defaultDistrictCouncilColor;
+    };
+
+    const districtCouncilIdFor = (name) => {
+      return `district-council-${String(name || "unknown").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "unknown"}`;
+    };
+
+    const districtCouncilGroupData = (name, color = defaultDistrictCouncilColor) => {
+      if (!districtCouncilGroups[name]) {
+        districtCouncilGroups[name] = {
+          id: districtCouncilIdFor(name),
+          name,
+          color,
+          expanded: true,
+          markers: []
+        };
+      }
+
+      if (color) districtCouncilGroups[name].color = color;
+
+      return districtCouncilGroups[name];
     };
 
     const ringContainsCoordinates = (ring, longitude, latitude) => {
@@ -148,9 +170,29 @@
       return false;
     };
 
+    const districtCouncilFeatureAtCoordinates = (latitude, longitude) => {
+      return districtCouncilFeatures.find((item) => featureContainsCoordinates(item, longitude, latitude)) || null;
+    };
+
     const districtCouncilColorAtCoordinates = (latitude, longitude) => {
-      const feature = districtCouncilFeatures.find((item) => featureContainsCoordinates(item, longitude, latitude));
+      const feature = districtCouncilFeatureAtCoordinates(latitude, longitude);
       return feature ? districtCouncilColorFor(feature) : null;
+    };
+
+    const districtCouncilDataAtCoordinates = (latitude, longitude) => {
+      const feature = districtCouncilFeatureAtCoordinates(latitude, longitude);
+
+      if (!feature) {
+        return {
+          name: districtCouncilFallbackName,
+          color: defaultDistrictCouncilColor
+        };
+      }
+
+      return {
+        name: feature?.properties?.name || districtCouncilFallbackName,
+        color: districtCouncilColorFor(feature)
+      };
     };
 
     const fallbackResultColor = (awesomeMap, node) => {
@@ -162,6 +204,124 @@
 
     const resultMarkerColor = (awesomeMap, node) => {
       return districtCouncilColorAtCoordinates(node.coordinates?.latitude, node.coordinates?.longitude) || fallbackResultColor(awesomeMap, node);
+    };
+
+    const districtCouncilControlsContainer = () => {
+      const section = document.querySelector("#awesome-map .leaflet-control-layers-list");
+      if (!section) return null;
+
+      let control = section.querySelector("#awesome_map-district-councils-control");
+      if (!control) {
+        section.insertAdjacentHTML("beforeend", `
+          <div id="awesome_map-district-councils-control" class="active">
+            <b class="awesome_map-district-councils-title-control awesome_map-title-control">Consells de barri</b>
+            <div class="district-councils-container"></div>
+          </div>
+        `);
+        control = section.querySelector("#awesome_map-district-councils-control");
+      }
+
+      return control.querySelector(".district-councils-container");
+    };
+
+    const removeProposalFilters = () => {
+      document.querySelectorAll(".awesome_map-component[data-layer='proposals']").forEach((label) => {
+        const container = label.closest("label");
+        if (container) container.remove();
+      });
+    };
+
+    const watchLayerControls = () => {
+      const section = document.querySelector("#awesome-map .leaflet-control-layers-list");
+      if (!section) return;
+
+      removeProposalFilters();
+
+      const observer = new MutationObserver(() => {
+        removeProposalFilters();
+      });
+
+      observer.observe(section, { childList: true, subtree: true });
+    };
+
+    const updateDistrictCouncilGroupState = (group) => {
+      const groupContainer = document.getElementById(group.id);
+      if (!groupContainer) return;
+
+      const groupInput = groupContainer.querySelector(".awesome_map-district-council-selector");
+      if (!groupInput) return;
+
+      const enabledMarkers = group.markers.filter((entry) => entry.enabled);
+      groupInput.indeterminate = enabledMarkers.length > 0 && enabledMarkers.length < group.markers.length;
+      groupInput.checked = enabledMarkers.length > 0;
+    };
+
+    const syncResultMarkerVisibility = (awesomeMap, entry) => {
+      const shouldBeVisible = entry.enabled;
+
+      if (shouldBeVisible) {
+        awesomeMap.cluster.addLayer(entry.marker);
+      } else {
+        awesomeMap.cluster.removeLayer(entry.marker);
+      }
+    };
+
+    const registerDistrictCouncilMarkerControl = (group, entry) => {
+      const container = districtCouncilControlsContainer();
+      if (!container) return;
+
+      let groupContainer = document.getElementById(group.id);
+      if (!groupContainer) {
+        container.insertAdjacentHTML("beforeend", `
+          <div id="${group.id}" class="awesome_map-district-council-group active" data-group-id="${group.id}">
+            <label class="awesome_map-district-council-root" data-district-council="${group.name}">
+              <input type="checkbox" class="awesome_map-district-council-selector" checked>
+              <span class="awesome_map-district-council-swatch" style="background-color: ${group.color}"></span>
+              <span>${group.name}</span>
+            </label>
+            <div class="awesome_map-district-council-markers"></div>
+          </div>
+        `);
+        groupContainer = document.getElementById(group.id);
+      }
+
+      const markersContainer = groupContainer.querySelector(".awesome_map-district-council-markers");
+      if (!markersContainer.querySelector(`[data-marker-id="${entry.id}"]`)) {
+        markersContainer.insertAdjacentHTML("beforeend", `
+          <label class="awesome_map-district-council-marker" data-marker-id="${entry.id}" data-group-id="${group.id}">
+            <input type="checkbox" class="awesome_map-district-council-marker-selector" checked>
+            <span>${entry.node.titleText}</span>
+          </label>
+        `);
+      }
+
+      updateDistrictCouncilGroupState(group);
+    };
+
+    const assignDistrictCouncilToMarker = (awesomeMap, entry) => {
+      const districtCouncil = districtCouncilDataAtCoordinates(entry.node.coordinates?.latitude, entry.node.coordinates?.longitude);
+      entry.districtCouncilName = districtCouncil.name;
+      entry.districtCouncilColor = districtCouncil.color;
+
+      const group = districtCouncilGroupData(districtCouncil.name, districtCouncil.color);
+      if (!group.markers.includes(entry)) {
+        group.markers.push(entry);
+      }
+
+      if (!entry.controlRegistered) {
+        registerDistrictCouncilMarkerControl(group, entry);
+        entry.controlRegistered = true;
+      }
+
+      entry.marker.setIcon(createResultIcon(awesomeMap, entry.node));
+      updateDistrictCouncilGroupState(group);
+    };
+
+    const syncAllDistrictCouncilMarkers = (awesomeMap) => {
+      resultMarkers.forEach((entry) => {
+        assignDistrictCouncilToMarker(awesomeMap, entry);
+        syncResultMarkerVisibility(awesomeMap, entry);
+      });
     };
 
     const fitMapToVisibleData = (awesomeMap) => {
@@ -222,9 +382,7 @@
 
           districtCouncilBoundariesLayer.addTo(awesomeMap.map);
           districtCouncilBoundariesLayer.bringToBack();
-          resultMarkers.forEach(({ marker, node }) => {
-            marker.setIcon(createResultIcon(awesomeMap, node));
-          });
+          syncAllDistrictCouncilMarkers(awesomeMap);
           hideLoadingSpinner(awesomeMap);
           fitMapToVisibleData(awesomeMap);
         })
@@ -244,24 +402,6 @@
       });
 
       return fallback;
-    };
-
-    const addTaxonomies = (awesomeMap, marker, node) => {
-      if (!node.taxonomies || !node.taxonomies.length) return;
-
-      node.taxonomies.forEach((taxonomy) => {
-        const tax = awesomeMap.getTaxonomy(taxonomy);
-        if (awesomeMap.layers[tax.id] && awesomeMap.layers[tax.id].group) {
-          try {
-            awesomeMap.layers[tax.id].group.addLayer(marker);
-            if (awesomeMap.controls && awesomeMap.controls.showTaxonomy) {
-              awesomeMap.controls.showTaxonomy(tax);
-            }
-          } catch (error) {
-            console.error("Failed taxonomy marker assignation", taxonomy, error);
-          }
-        }
-      });
     };
 
     const createResultIcon = (awesomeMap, node) => {
@@ -289,7 +429,17 @@
         icon: createResultIcon(awesomeMap, node)
       });
 
-      resultMarkers.push({ marker, node });
+      const entry = {
+        id: `result-marker-${node.id}`,
+        marker,
+        node,
+        enabled: true,
+        controlRegistered: false,
+        districtCouncilName: null,
+        districtCouncilColor: null
+      };
+
+      resultMarkers.push(entry);
 
       marker.on("click", () => {
         const dom = document.createElement("div");
@@ -303,8 +453,11 @@
         awesomeMap.map.addLayer(popup);
       });
 
-      awesomeMap.cluster.addLayer(marker);
-      addTaxonomies(awesomeMap, marker, node);
+      if (districtCouncilFeatures.length) {
+        assignDistrictCouncilToMarker(awesomeMap, entry);
+      }
+
+      syncResultMarkerVisibility(awesomeMap, entry);
     };
 
     const startResultsLoading = (awesomeMap, component) => {
@@ -378,6 +531,8 @@
         return;
       }
 
+      removeProposalFilters();
+
       ["proposals", "meetings"].forEach((layerName) => {
         const labels = document.querySelectorAll(`.awesome_map-component[data-layer='${layerName}']`);
         labels.forEach((label) => {
@@ -399,6 +554,7 @@
       }
 
       hideLoadingSpinner(window.AwesomeMap);
+      watchLayerControls();
       addDistrictCouncilBoundaries(window.AwesomeMap);
       if (!showAccountabilityResults || !components.length) return;
 
@@ -409,6 +565,100 @@
       });
     };
 
+    document.addEventListener("click", (event) => {
+      const title = event.target.closest(".awesome_map-district-councils-title-control");
+      if (!title) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      const control = document.getElementById("awesome_map-district-councils-control");
+      if (control) control.classList.toggle("active");
+    });
+
+    document.addEventListener("change", (event) => {
+      const groupSelector = event.target.closest(".awesome_map-district-council-selector");
+      if (groupSelector) {
+        event.stopPropagation();
+        const groupContainer = groupSelector.closest(".awesome_map-district-council-group");
+        const group = Object.values(districtCouncilGroups).find((item) => item.id === groupContainer?.dataset.groupId);
+        if (!group) return;
+
+        group.markers.forEach((entry) => {
+          entry.enabled = groupSelector.checked;
+          const markerInput = groupContainer.querySelector(`[data-marker-id="${entry.id}"] .awesome_map-district-council-marker-selector`);
+          if (markerInput) markerInput.checked = groupSelector.checked;
+          syncResultMarkerVisibility(window.AwesomeMap, entry);
+        });
+
+        updateDistrictCouncilGroupState(group);
+        return;
+      }
+
+      const markerSelector = event.target.closest(".awesome_map-district-council-marker-selector");
+      if (!markerSelector) return;
+
+      event.stopPropagation();
+      const markerLabel = markerSelector.closest(".awesome_map-district-council-marker");
+      const entry = resultMarkers.find((item) => item.id === markerLabel?.dataset.markerId);
+      if (!entry) return;
+
+      entry.enabled = markerSelector.checked;
+      syncResultMarkerVisibility(window.AwesomeMap, entry);
+
+      const group = districtCouncilGroups[entry.districtCouncilName];
+      if (group) updateDistrictCouncilGroupState(group);
+    });
+
     waitForAwesomeMap();
   });
 </script>
+
+<style>
+  #awesome_map-district-councils-control {
+    display: block;
+  }
+
+  #awesome_map-district-councils-control .district-councils-container {
+    display: none;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  #awesome_map-district-councils-control.active .district-councils-container {
+    display: block;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-group {
+    margin-bottom: 0.5rem;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-root,
+  #awesome_map-district-councils-control .awesome_map-district-council-marker {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: 0;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-root {
+    font-weight: 600;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-markers {
+    margin-top: 0.3rem;
+    padding-left: 1.2rem;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-marker {
+    font-weight: 400;
+    margin-bottom: 0.3rem;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-swatch {
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 50%;
+    border: 1px solid #111;
+    flex: 0 0 auto;
+  }
+</style>
