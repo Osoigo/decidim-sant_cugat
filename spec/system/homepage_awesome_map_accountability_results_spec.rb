@@ -84,6 +84,7 @@ describe "Homepage awesome map with accountability results", type: :system do
 
     expect(page).to have_selector("#awesome-map")
     expect(page).to have_selector("script#marker-result-popup", visible: false)
+    expect(page.body).to include("/geo/consells-de-barri.geojson")
     expect(page.body).to include("results(first: 50")
     expect(page.body).to include(%("id":#{accountability_component.id}))
     expect(page.body).to include("Resultat")

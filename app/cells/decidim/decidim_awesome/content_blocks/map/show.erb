@@ -6,7 +6,8 @@
   <% end %>
 </section>
 
-<% if model.settings.respond_to?(:show_accountability_results) && model.settings.show_accountability_results %>
+<% show_accountability_results = model.settings.respond_to?(:show_accountability_results) && model.settings.show_accountability_results %>
+<% if show_accountability_results %>
 <script id="marker-result-popup" type="text/x-jsrender">
   <div class="space-y-6">
     <div class="card__list">
@@ -29,17 +30,29 @@
     </div>
   </div>
 </script>
+<% end %>
 
 <script>
   document.addEventListener("DOMContentLoaded", () => {
-    const components = <%= accountability_map_components.map { |component|
+    const districtCouncilLayerUrl = "/geo/consells-de-barri.geojson";
+    let districtCouncilBoundariesLayer = null;
+    const districtCouncilColors = {
+      "Centre": "#fec544",
+      "Les Planes": "#5bb357",
+      "Mira-sol": "#33bad3",
+      "Mira Sol": "#33bad3",
+      "La Floresta": "#ed3596",
+      "Volpelleres": "#f47721"
+    };
+    const defaultDistrictCouncilColor = "#165b69";
+    const configuredMapZoom = <%= model.settings.map_zoom.present? ? model.settings.map_zoom.to_i : "null" %>;
+    const showAccountabilityResults = <%= show_accountability_results ? "true" : "false" %>;
+    const components = <%= show_accountability_results ? accountability_map_components.map { |component|
       {
         id: component.id,
         url: Decidim::EngineRouter.main_proxy(component).root_path
       }
-    }.to_json.html_safe %>;
-
-    if (!components.length) return;
+    }.to_json.html_safe : [].to_json.html_safe %>;
 
     const query = `query ($id: ID!, $after: String!) {
       component(id: $id) {
@@ -81,6 +94,81 @@
     }`;
 
     const htmlLang = document.documentElement.getAttribute("lang");
+
+    const hideLoadingSpinner = (awesomeMap) => {
+      if (awesomeMap.controls && awesomeMap.controls.loading) {
+        awesomeMap.controls.loading.style.display = "none";
+      }
+    };
+
+    const districtCouncilColorFor = (feature) => {
+      const name = feature?.properties?.name;
+      return districtCouncilColors[name] || defaultDistrictCouncilColor;
+    };
+
+    const fitMapToVisibleData = (awesomeMap) => {
+      let bounds = districtCouncilBoundariesLayer ? districtCouncilBoundariesLayer.getBounds() : null;
+
+      if ((!bounds || !bounds.isValid()) && awesomeMap.cluster && awesomeMap.cluster.getLayers().length > 0) {
+        const clusterBounds = awesomeMap.cluster.getBounds();
+        bounds = clusterBounds;
+      }
+
+      if (bounds && bounds.isValid()) {
+        window.requestAnimationFrame(() => {
+          awesomeMap.map.invalidateSize(false);
+          awesomeMap.map.fitBounds(bounds, { padding: [24, 24], animate: false });
+
+          if (Number.isInteger(configuredMapZoom) && configuredMapZoom > 0) {
+            awesomeMap.map.setZoom(configuredMapZoom);
+          }
+        });
+      }
+    };
+
+    const addDistrictCouncilBoundaries = (awesomeMap) => {
+      fetch(districtCouncilLayerUrl)
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.json();
+        })
+        .then((featureCollection) => {
+          if (!featureCollection || !Array.isArray(featureCollection.features) || !featureCollection.features.length) return;
+
+          const paneName = "district-council-boundaries";
+          let pane = awesomeMap.map.getPane(paneName);
+
+          if (!pane) {
+            pane = awesomeMap.map.createPane(paneName);
+            pane.style.zIndex = 350;
+            pane.style.pointerEvents = "none";
+          }
+
+          districtCouncilBoundariesLayer = L.geoJSON(featureCollection, {
+            pane: paneName,
+            style: (feature) => {
+              const color = districtCouncilColorFor(feature);
+
+              return {
+                color,
+                weight: 2,
+                opacity: 0.95,
+                fillColor: color,
+                fillOpacity: 0.2,
+                dashArray: "6 4"
+              };
+            }
+          });
+
+          districtCouncilBoundariesLayer.addTo(awesomeMap.map);
+          districtCouncilBoundariesLayer.bringToBack();
+          hideLoadingSpinner(awesomeMap);
+          fitMapToVisibleData(awesomeMap);
+        })
+        .catch((error) => {
+          console.error("Failed to load district council boundaries", error);
+        });
+    };
 
     const findTranslation = (field) => {
       const translations = field?.translations || [];
@@ -163,7 +251,7 @@
       }
 
       if (awesomeMap.controls && awesomeMap.controls.loading) {
-        awesomeMap.controls.loading.style.display = "block";
+        awesomeMap.controls.loading.style.display = "none";
       }
 
       return loadingKey;
@@ -206,7 +294,7 @@
         if (collection.pageInfo && collection.pageInfo.hasNextPage) {
           fetchResults(awesomeMap, component, loadingKey, collection.pageInfo.endCursor || "");
         } else {
-          awesomeMap.autoResize();
+          fitMapToVisibleData(awesomeMap);
           finishResultsLoading(awesomeMap, loadingKey);
         }
       }).fail((error) => {
@@ -245,6 +333,10 @@
         return;
       }
 
+      hideLoadingSpinner(window.AwesomeMap);
+      addDistrictCouncilBoundaries(window.AwesomeMap);
+      if (!showAccountabilityResults || !components.length) return;
+
       hideDefaultLayers(window.AwesomeMap);
       components.forEach((component) => {
         const loadingKey = startResultsLoading(window.AwesomeMap, component);
@@ -255,4 +347,3 @@
     waitForAwesomeMap();
   });
 </script>
-<% end %>
