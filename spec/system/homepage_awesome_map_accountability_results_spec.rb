@@ -97,15 +97,11 @@ describe "Homepage awesome map with accountability results", type: :system do
     expect(result.longitude).to be_present
   end
 
-  it "hides proposal filters and keeps meetings hidden by default" do
+  it "does not bootstrap default proposal or meeting layers in accountability-only mode" do
     visit decidim.root_path
 
-    expect(page).to have_selector(".awesome_map-component[data-layer='meetings']")
     expect(page).not_to have_selector(".awesome_map-component[data-layer='proposals']")
-
-    meeting_toggle = page.find(:xpath, "//span[contains(@class, 'awesome_map-component') and @data-layer='meetings']/ancestor::label[1]//input", visible: :all)
-
-    expect(meeting_toggle).not_to be_checked
+    expect(page).not_to have_selector(".awesome_map-component[data-layer='meetings']")
     expect(proposal.latitude).to be_present
     expect(meeting.latitude).to be_present
   end
