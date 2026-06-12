@@ -224,6 +224,24 @@
       return control.querySelector(".district-councils-container");
     };
 
+    const adjustMapControlHeights = () => {
+      const mapContainer = document.querySelector("#awesome-map");
+      const panel = document.querySelector("#awesome-map .leaflet-control-layers");
+      const tree = document.querySelector("#awesome_map-district-councils-control .district-councils-container");
+      if (!mapContainer || !panel || !tree) return;
+
+      const mapRect = mapContainer.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const treeRect = tree.getBoundingClientRect();
+      const panelPaddingBottom = 16;
+      const treePaddingBottom = 16;
+      const panelAvailableHeight = Math.max(220, Math.floor(mapRect.bottom - panelRect.top - panelPaddingBottom));
+      const treeAvailableHeight = Math.max(160, Math.floor(mapRect.bottom - treeRect.top - treePaddingBottom));
+
+      panel.style.maxHeight = `${panelAvailableHeight}px`;
+      tree.style.maxHeight = `${treeAvailableHeight}px`;
+    };
+
     const removeProposalFilters = () => {
       document.querySelectorAll(".awesome_map-component[data-layer='proposals']").forEach((label) => {
         const container = label.closest("label");
@@ -236,9 +254,11 @@
       if (!section) return;
 
       removeProposalFilters();
+      window.requestAnimationFrame(adjustMapControlHeights);
 
       const observer = new MutationObserver(() => {
         removeProposalFilters();
+        window.requestAnimationFrame(adjustMapControlHeights);
       });
 
       observer.observe(section, { childList: true, subtree: true });
@@ -573,6 +593,7 @@
       event.stopPropagation();
       const control = document.getElementById("awesome_map-district-councils-control");
       if (control) control.classList.toggle("active");
+      window.requestAnimationFrame(adjustMapControlHeights);
     });
 
     document.addEventListener("change", (event) => {
@@ -607,6 +628,11 @@
 
       const group = districtCouncilGroups[entry.districtCouncilName];
       if (group) updateDistrictCouncilGroupState(group);
+      window.requestAnimationFrame(adjustMapControlHeights);
+    });
+
+    window.addEventListener("resize", () => {
+      window.requestAnimationFrame(adjustMapControlHeights);
     });
 
     waitForAwesomeMap();
@@ -614,13 +640,16 @@
 </script>
 
 <style>
+  #awesome-map .leaflet-control-layers {
+    overflow-y: hidden;
+  }
+
   #awesome_map-district-councils-control {
     display: block;
   }
 
   #awesome_map-district-councils-control .district-councils-container {
     display: none;
-    max-height: 260px;
     overflow-y: auto;
   }
 
