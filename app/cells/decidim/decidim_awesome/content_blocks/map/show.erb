@@ -242,6 +242,14 @@
       tree.style.maxHeight = `${treeAvailableHeight}px`;
     };
 
+    const moveZoomControlsToRight = () => {
+      const zoomControl = document.querySelector("#awesome-map .leaflet-control-zoom");
+      const rightTopControls = document.querySelector("#awesome-map .leaflet-top.leaflet-right");
+      if (!zoomControl || !rightTopControls || rightTopControls.contains(zoomControl)) return;
+
+      rightTopControls.prepend(zoomControl);
+    };
+
     const removeProposalFilters = () => {
       document.querySelectorAll(".awesome_map-component[data-layer='proposals']").forEach((label) => {
         const container = label.closest("label");
@@ -573,6 +581,7 @@
         return;
       }
 
+      moveZoomControlsToRight();
       hideLoadingSpinner(window.AwesomeMap);
       watchLayerControls();
       addDistrictCouncilBoundaries(window.AwesomeMap);
