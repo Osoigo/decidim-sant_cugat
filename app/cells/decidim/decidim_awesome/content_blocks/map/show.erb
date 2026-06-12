@@ -1,12 +1,13 @@
 <section class="map-block home__section">
   <%= content_tag("h3", section_title) if section_title.present? %>
 
+  <% show_accountability_results = model.settings.respond_to?(:show_accountability_results) && model.settings.show_accountability_results %>
+
   <%= awesome_map_for global_map_components do %>
-    <%= render partial: "decidim/decidim_awesome/map_component/map/map_template.html", locals: { taxonomies: all_taxonomies, map_height: model.settings.map_height } %>
+      <%= render partial: "decidim/decidim_awesome/map_component/map/map_template.html", locals: { taxonomies: all_taxonomies, map_height: model.settings.map_height } %>
   <% end %>
 </section>
 
-<% show_accountability_results = model.settings.respond_to?(:show_accountability_results) && model.settings.show_accountability_results %>
 <% if show_accountability_results %>
 <script id="marker-result-popup" type="text/x-jsrender">
   <div class="space-y-6">
@@ -37,6 +38,8 @@
     const districtCouncilLayerUrl = "/geo/consells-de-barri.geojson";
     let districtCouncilBoundariesLayer = null;
     let districtCouncilFeatures = [];
+    let districtCouncilBoundariesLoaded = false;
+    let initialViewportAdjusted = false;
     const resultMarkers = [];
     const districtCouncilGroups = {};
     const districtCouncilColors = {
@@ -372,6 +375,15 @@
       }
     };
 
+    const updateInitialViewport = (awesomeMap) => {
+      if (initialViewportAdjusted) return;
+      if (!districtCouncilBoundariesLoaded) return;
+      if (Array.isArray(awesomeMap.loading) && awesomeMap.loading.length > 0) return;
+
+      fitMapToVisibleData(awesomeMap);
+      initialViewportAdjusted = true;
+    };
+
     const addDistrictCouncilBoundaries = (awesomeMap) => {
       fetch(districtCouncilLayerUrl)
         .then((response) => {
@@ -410,11 +422,14 @@
 
           districtCouncilBoundariesLayer.addTo(awesomeMap.map);
           districtCouncilBoundariesLayer.bringToBack();
+          districtCouncilBoundariesLoaded = true;
           syncAllDistrictCouncilMarkers(awesomeMap);
           hideLoadingSpinner(awesomeMap);
-          fitMapToVisibleData(awesomeMap);
+          updateInitialViewport(awesomeMap);
         })
         .catch((error) => {
+          districtCouncilBoundariesLoaded = true;
+          updateInitialViewport(awesomeMap);
           console.error("Failed to load district council boundaries", error);
         });
     };
@@ -514,6 +529,8 @@
       if (awesomeMap.loading.length === 0 && awesomeMap.controls && awesomeMap.controls.loading) {
         awesomeMap.controls.loading.style.display = "none";
       }
+
+      updateInitialViewport(awesomeMap);
     };
 
     const fetchResults = (awesomeMap, component, loadingKey, after = "") => {
@@ -540,7 +557,6 @@
         if (collection.pageInfo && collection.pageInfo.hasNextPage) {
           fetchResults(awesomeMap, component, loadingKey, collection.pageInfo.endCursor || "");
         } else {
-          fitMapToVisibleData(awesomeMap);
           finishResultsLoading(awesomeMap, loadingKey);
         }
       }).fail((error) => {
