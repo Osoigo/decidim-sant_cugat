@@ -36,6 +36,8 @@
   document.addEventListener("DOMContentLoaded", () => {
     const districtCouncilLayerUrl = "/geo/consells-de-barri.geojson";
     let districtCouncilBoundariesLayer = null;
+    let districtCouncilFeatures = [];
+    const resultMarkers = [];
     const districtCouncilColors = {
       "Centre": "#fec544",
       "Les Planes": "#5bb357",
@@ -106,6 +108,62 @@
       return districtCouncilColors[name] || defaultDistrictCouncilColor;
     };
 
+    const ringContainsCoordinates = (ring, longitude, latitude) => {
+      let isInside = false;
+
+      for (let currentIndex = 0, previousIndex = ring.length - 1; currentIndex < ring.length; previousIndex = currentIndex++) {
+        const [currentLongitude, currentLatitude] = ring[currentIndex];
+        const [previousLongitude, previousLatitude] = ring[previousIndex];
+        const intersects = ((currentLatitude > latitude) !== (previousLatitude > latitude)) &&
+          (longitude < ((previousLongitude - currentLongitude) * (latitude - currentLatitude) / ((previousLatitude - currentLatitude) || Number.EPSILON)) + currentLongitude);
+
+        if (intersects) isInside = !isInside;
+      }
+
+      return isInside;
+    };
+
+    const polygonContainsCoordinates = (polygonCoordinates, longitude, latitude) => {
+      if (!polygonCoordinates.length || !ringContainsCoordinates(polygonCoordinates[0], longitude, latitude)) return false;
+
+      for (let holeIndex = 1; holeIndex < polygonCoordinates.length; holeIndex += 1) {
+        if (ringContainsCoordinates(polygonCoordinates[holeIndex], longitude, latitude)) return false;
+      }
+
+      return true;
+    };
+
+    const featureContainsCoordinates = (feature, longitude, latitude) => {
+      const geometry = feature?.geometry;
+      if (!geometry || longitude == null || latitude == null) return false;
+
+      if (geometry.type === "Polygon") {
+        return polygonContainsCoordinates(geometry.coordinates || [], longitude, latitude);
+      }
+
+      if (geometry.type === "MultiPolygon") {
+        return (geometry.coordinates || []).some((polygonCoordinates) => polygonContainsCoordinates(polygonCoordinates, longitude, latitude));
+      }
+
+      return false;
+    };
+
+    const districtCouncilColorAtCoordinates = (latitude, longitude) => {
+      const feature = districtCouncilFeatures.find((item) => featureContainsCoordinates(item, longitude, latitude));
+      return feature ? districtCouncilColorFor(feature) : null;
+    };
+
+    const fallbackResultColor = (awesomeMap, node) => {
+      const primaryTaxonomy = node.taxonomies && node.taxonomies[0];
+      if (!primaryTaxonomy) return defaultDistrictCouncilColor;
+
+      return awesomeMap.getTaxonomy(primaryTaxonomy).color;
+    };
+
+    const resultMarkerColor = (awesomeMap, node) => {
+      return districtCouncilColorAtCoordinates(node.coordinates?.latitude, node.coordinates?.longitude) || fallbackResultColor(awesomeMap, node);
+    };
+
     const fitMapToVisibleData = (awesomeMap) => {
       let bounds = districtCouncilBoundariesLayer ? districtCouncilBoundariesLayer.getBounds() : null;
 
@@ -135,6 +193,8 @@
         .then((featureCollection) => {
           if (!featureCollection || !Array.isArray(featureCollection.features) || !featureCollection.features.length) return;
 
+          districtCouncilFeatures = featureCollection.features;
+
           const paneName = "district-council-boundaries";
           let pane = awesomeMap.map.getPane(paneName);
 
@@ -162,6 +222,9 @@
 
           districtCouncilBoundariesLayer.addTo(awesomeMap.map);
           districtCouncilBoundariesLayer.bringToBack();
+          resultMarkers.forEach(({ marker, node }) => {
+            marker.setIcon(createResultIcon(awesomeMap, node));
+          });
           hideLoadingSpinner(awesomeMap);
           fitMapToVisibleData(awesomeMap);
         })
@@ -202,12 +265,12 @@
     };
 
     const createResultIcon = (awesomeMap, node) => {
-      const color = awesomeMap.getTaxonomy(node.taxonomies && node.taxonomies[0]).color;
+      const color = resultMarkerColor(awesomeMap, node);
       const size = 36;
 
       return L.divIcon({
         html: `
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}px" height="${size}px" class="text-secondary" style="color: ${color}"><path fill="none" d="M0 0h24v24H0z"/><path fill="currentColor" d="M18.364 17.364L12 23.728l-6.364-6.364a9 9 0 1 1 12.728 0zM12 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0-2a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>`,
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}px" height="${size}px" class="text-secondary" style="color: ${color}"><path fill="none" d="M0 0h24v24H0z"/><path fill="currentColor" stroke="#000" stroke-width="0.9" d="M18.364 17.364L12 23.728l-6.364-6.364a9 9 0 1 1 12.728 0zM12 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0-2a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>`,
         iconAnchor: [0.5 * size, size],
         popupAnchor: [0, -0.5 * size]
       });
@@ -225,6 +288,8 @@
         title: node.titleText,
         icon: createResultIcon(awesomeMap, node)
       });
+
+      resultMarkers.push({ marker, node });
 
       marker.on("click", () => {
         const dom = document.createElement("div");
