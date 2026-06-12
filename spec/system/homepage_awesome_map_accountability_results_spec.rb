@@ -86,7 +86,9 @@ describe "Homepage awesome map with accountability results", type: :system do
     expect(page).to have_selector("script#marker-result-popup", visible: false)
     expect(page.body).to include("/geo/consells-de-barri.geojson")
     expect(page.body).to include("districtCouncilColorAtCoordinates")
-    expect(page.body).to include("marker.setIcon(createResultIcon(awesomeMap, node))")
+    expect(page.body).to include("awesome_map-district-councils-control")
+    expect(page.body).to include("awesome_map-district-council-selector")
+    expect(page.body).to include("awesome_map-district-council-marker-selector")
     expect(page.body).to include('stroke="#000"')
     expect(page.body).to include("results(first: 50")
     expect(page.body).to include(%("id":#{accountability_component.id}))
@@ -95,16 +97,14 @@ describe "Homepage awesome map with accountability results", type: :system do
     expect(result.longitude).to be_present
   end
 
-  it "keeps proposals and meetings available but hidden by default" do
+  it "hides proposal filters and keeps meetings hidden by default" do
     visit decidim.root_path
 
-    expect(page).to have_selector(".awesome_map-component[data-layer='proposals']")
     expect(page).to have_selector(".awesome_map-component[data-layer='meetings']")
+    expect(page).not_to have_selector(".awesome_map-component[data-layer='proposals']")
 
-    proposal_toggle = page.find(:xpath, "//span[contains(@class, 'awesome_map-component') and @data-layer='proposals']/ancestor::label[1]//input", visible: :all)
     meeting_toggle = page.find(:xpath, "//span[contains(@class, 'awesome_map-component') and @data-layer='meetings']/ancestor::label[1]//input", visible: :all)
 
-    expect(proposal_toggle).not_to be_checked
     expect(meeting_toggle).not_to be_checked
     expect(proposal.latitude).to be_present
     expect(meeting.latitude).to be_present
