@@ -305,11 +305,16 @@
       if (!groupContainer) {
         container.insertAdjacentHTML("beforeend", `
           <div id="${group.id}" class="awesome_map-district-council-group active" data-group-id="${group.id}">
-            <label class="awesome_map-district-council-root" data-district-council="${group.name}">
-              <input type="checkbox" class="awesome_map-district-council-selector" checked>
-              <span class="awesome_map-district-council-swatch" style="background-color: ${group.color}"></span>
-              <span>${group.name}</span>
-            </label>
+            <div class="awesome_map-filter-group-header">
+              <button type="button" class="awesome_map-group-toggle" data-group-id="${group.id}" aria-expanded="true" aria-label="Toggle ${group.name}">
+                <span class="awesome_map-group-toggle-icon">▾</span>
+              </button>
+              <label class="awesome_map-district-council-root" data-district-council="${group.name}">
+                <input type="checkbox" class="awesome_map-district-council-selector" checked>
+                <span class="awesome_map-district-council-swatch" style="background-color: ${group.color}"></span>
+                <span>${group.name}</span>
+              </label>
+            </div>
             <div class="awesome_map-district-council-markers"></div>
           </div>
         `);
@@ -621,6 +626,21 @@
       window.requestAnimationFrame(adjustMapControlHeights);
     });
 
+    document.addEventListener("click", (event) => {
+      const toggle = event.target.closest(".awesome_map-group-toggle");
+      if (!toggle) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const groupContainer = document.getElementById(toggle.dataset.groupId);
+      if (!groupContainer) return;
+
+      groupContainer.classList.toggle("active");
+      toggle.setAttribute("aria-expanded", groupContainer.classList.contains("active") ? "true" : "false");
+      window.requestAnimationFrame(adjustMapControlHeights);
+    });
+
     document.addEventListener("change", (event) => {
       const groupSelector = event.target.closest(".awesome_map-district-council-selector");
       if (groupSelector) {
@@ -686,6 +706,31 @@
     margin-bottom: 0.5rem;
   }
 
+  #awesome_map-district-councils-control .awesome_map-filter-group-header {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-group-toggle {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    line-height: 1;
+    cursor: pointer;
+    color: inherit;
+    flex: 0 0 auto;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-group-toggle-icon {
+    display: inline-block;
+    transition: transform 0.15s ease;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-group:not(.active) .awesome_map-group-toggle-icon {
+    transform: rotate(-90deg);
+  }
+
   #awesome_map-district-councils-control .awesome_map-district-council-root,
   #awesome_map-district-councils-control .awesome_map-district-council-marker {
     display: flex;
@@ -701,6 +746,10 @@
   #awesome_map-district-councils-control .awesome_map-district-council-markers {
     margin-top: 0.3rem;
     padding-left: 1.2rem;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-group:not(.active) .awesome_map-district-council-markers {
+    display: none;
   }
 
   #awesome_map-district-councils-control .awesome_map-district-council-marker {
