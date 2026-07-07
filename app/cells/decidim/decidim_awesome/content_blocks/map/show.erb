@@ -296,22 +296,14 @@
     const adjustMapControlHeights = () => {
       const mapContainer = document.querySelector("#awesome-map");
       const panel = document.querySelector("#awesome-map .leaflet-control-layers");
-      const trees = document.querySelectorAll("#awesome_map-district-councils-control .district-councils-container, #awesome_map-budget-years-control .budget-years-container");
-      if (!mapContainer || !panel || trees.length === 0) return;
+      if (!mapContainer || !panel) return;
 
       const mapRect = mapContainer.getBoundingClientRect();
       const panelRect = panel.getBoundingClientRect();
       const panelPaddingBottom = 16;
-      const treePaddingBottom = 16;
       const panelAvailableHeight = Math.max(220, Math.floor(mapRect.bottom - panelRect.top - panelPaddingBottom));
 
       panel.style.maxHeight = `${panelAvailableHeight}px`;
-
-      trees.forEach((tree) => {
-        const treeRect = tree.getBoundingClientRect();
-        const treeAvailableHeight = Math.max(160, Math.floor(mapRect.bottom - treeRect.top - treePaddingBottom));
-        tree.style.maxHeight = `${treeAvailableHeight}px`;
-      });
     };
 
     const moveZoomControlsToRight = () => {
@@ -342,6 +334,22 @@
       });
 
       observer.observe(section, { childList: true, subtree: true });
+    };
+
+    const containMapControlScroll = () => {
+      const scrollContainers = document.querySelectorAll("#awesome-map .leaflet-control-layers");
+
+      scrollContainers.forEach((container) => {
+        if (!container || container.dataset.scrollBound === "true") return;
+
+        container.dataset.scrollBound = "true";
+
+        ["wheel", "touchmove"].forEach((eventName) => {
+          container.addEventListener(eventName, (event) => {
+            event.stopPropagation();
+          }, { passive: true });
+        });
+      });
     };
 
     const compareFilterLabels = (leftValue, rightValue) => {
@@ -853,6 +861,7 @@
       moveZoomControlsToRight();
       hideLoadingSpinner(window.AwesomeMap);
       watchLayerControls();
+      containMapControlScroll();
       addDistrictCouncilBoundaries(window.AwesomeMap);
       if (!showAccountabilityResults || !components.length) return;
 
@@ -962,7 +971,8 @@
 
 <style>
   #awesome-map .leaflet-control-layers {
-    overflow-y: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   #awesome_map-district-councils-control {
@@ -976,7 +986,7 @@
   #awesome_map-district-councils-control .district-councils-container,
   #awesome_map-budget-years-control .budget-years-container {
     display: none;
-    overflow-y: auto;
+    overflow-y: visible;
   }
 
   #awesome_map-district-councils-control.active .district-councils-container {
