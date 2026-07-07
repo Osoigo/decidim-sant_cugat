@@ -344,6 +344,41 @@
       observer.observe(section, { childList: true, subtree: true });
     };
 
+    const compareFilterLabels = (leftValue, rightValue) => {
+      return String(leftValue || "").localeCompare(String(rightValue || ""), htmlLang || "ca", {
+        numeric: true,
+        sensitivity: "base"
+      });
+    };
+
+    const budgetYearFromLabel = (value) => {
+      const match = String(value || "").match(/(20\d{2})/);
+      return match ? Number.parseInt(match[1], 10) : null;
+    };
+
+    const sortFilterElements = (container, selector, getLabel, compareValues = compareFilterLabels) => {
+      if (!container) return;
+
+      Array.from(container.querySelectorAll(selector))
+        .sort((leftElement, rightElement) => compareValues(getLabel(leftElement), getLabel(rightElement)))
+        .forEach((element) => container.appendChild(element));
+    };
+
+    const compareBudgetYearLabels = (leftValue, rightValue) => {
+      const leftYear = budgetYearFromLabel(leftValue);
+      const rightYear = budgetYearFromLabel(rightValue);
+
+      if (leftYear != null && rightYear != null && leftYear !== rightYear) {
+        return rightYear - leftYear;
+      }
+
+      return compareFilterLabels(leftValue, rightValue);
+    };
+
+    const markerControlChecked = (entry) => {
+      return entry.enabled && entry.budgetYearEnabled;
+    };
+
     const updateDistrictCouncilGroupState = (group) => {
       const groupContainer = document.getElementById(group.id);
       if (!groupContainer) return;
@@ -351,7 +386,7 @@
       const groupInput = groupContainer.querySelector(".awesome_map-district-council-selector");
       if (!groupInput) return;
 
-      const enabledMarkers = group.markers.filter((entry) => entry.enabled);
+      const enabledMarkers = group.markers.filter((entry) => markerControlChecked(entry));
       groupInput.indeterminate = enabledMarkers.length > 0 && enabledMarkers.length < group.markers.length;
       groupInput.checked = enabledMarkers.length > 0;
     };
@@ -363,13 +398,52 @@
       const groupInput = groupContainer.querySelector(".awesome_map-budget-year-selector");
       if (!groupInput) return;
 
-      const enabledMarkers = group.markers.filter((entry) => entry.budgetYearEnabled);
+      const enabledMarkers = group.markers.filter((entry) => markerControlChecked(entry));
       groupInput.indeterminate = enabledMarkers.length > 0 && enabledMarkers.length < group.markers.length;
       groupInput.checked = enabledMarkers.length > 0;
     };
 
+    const syncMarkerControlInputs = (entry) => {
+      const checked = markerControlChecked(entry);
+
+      document.querySelectorAll(`[data-marker-id="${entry.id}"] input[type='checkbox']`).forEach((input) => {
+        input.checked = checked;
+      });
+    };
+
+    const syncMarkerControlState = (entry) => {
+      syncMarkerControlInputs(entry);
+
+      const districtGroup = districtCouncilGroups[entry.districtCouncilName];
+      if (districtGroup) updateDistrictCouncilGroupState(districtGroup);
+
+      const budgetGroup = budgetYearGroups[entry.budgetYearName];
+      if (budgetGroup) updateBudgetYearGroupState(budgetGroup);
+    };
+
+    const syncMarkerControlStates = (entries) => {
+      const districtGroupsToUpdate = new Set();
+      const budgetGroupsToUpdate = new Set();
+
+      entries.forEach((entry) => {
+        syncMarkerControlInputs(entry);
+        if (entry.districtCouncilName) districtGroupsToUpdate.add(entry.districtCouncilName);
+        if (entry.budgetYearName) budgetGroupsToUpdate.add(entry.budgetYearName);
+      });
+
+      districtGroupsToUpdate.forEach((name) => {
+        const group = districtCouncilGroups[name];
+        if (group) updateDistrictCouncilGroupState(group);
+      });
+
+      budgetGroupsToUpdate.forEach((name) => {
+        const group = budgetYearGroups[name];
+        if (group) updateBudgetYearGroupState(group);
+      });
+    };
+
     const syncResultMarkerVisibility = (awesomeMap, entry) => {
-      const shouldBeVisible = entry.enabled && entry.budgetYearEnabled;
+      const shouldBeVisible = markerControlChecked(entry);
 
       if (shouldBeVisible) {
         awesomeMap.cluster.addLayer(entry.marker);
@@ -412,6 +486,9 @@
         `);
       }
 
+      sortFilterElements(container, ".awesome_map-district-council-group", (element) => element.querySelector(".awesome_map-district-council-root span:last-child")?.textContent);
+      sortFilterElements(markersContainer, ".awesome_map-district-council-marker", (element) => element.querySelector("span:last-child")?.textContent);
+
       updateDistrictCouncilGroupState(group);
     };
 
@@ -447,6 +524,9 @@
           </label>
         `);
       }
+
+      sortFilterElements(container, ".awesome_map-budget-year-group", (element) => element.querySelector(".awesome_map-budget-year-root span:last-child")?.textContent, compareBudgetYearLabels);
+      sortFilterElements(markersContainer, ".awesome_map-budget-year-marker", (element) => element.querySelector("span:last-child")?.textContent);
 
       updateBudgetYearGroupState(group);
     };
@@ -586,9 +666,21 @@
       return fallback;
     };
 
+    const findTranslationByPreferredLocales = (field, preferredLocales = []) => {
+      const translations = field?.translations || [];
+      const fallback = findTranslation(field);
+
+      for (const locale of preferredLocales) {
+        const translation = translations.find((item) => item.locale === locale && item.text);
+        if (translation) return translation.text;
+      }
+
+      return fallback;
+    };
+
     const budgetYearNameFromTaxonomy = (taxonomy) => {
       const candidates = [taxonomy, taxonomy?.parent, taxonomy?.parent?.parent]
-        .map((item) => findTranslation(item?.name))
+        .map((item) => findTranslationByPreferredLocales(item?.name, ["ca", htmlLang]))
         .filter(Boolean);
 
       return candidates.find((name) => budgetYearNamePattern.test(name)) || null;
@@ -801,36 +893,34 @@
       const groupSelector = event.target.closest(".awesome_map-district-council-selector");
       if (groupSelector) {
         event.stopPropagation();
+        const nextChecked = groupSelector.checked;
         const groupContainer = groupSelector.closest(".awesome_map-district-council-group");
         const group = Object.values(districtCouncilGroups).find((item) => item.id === groupContainer?.dataset.groupId);
         if (!group) return;
 
         group.markers.forEach((entry) => {
-          entry.enabled = groupSelector.checked;
-          const markerInput = groupContainer.querySelector(`[data-marker-id="${entry.id}"] .awesome_map-district-council-marker-selector`);
-          if (markerInput) markerInput.checked = groupSelector.checked;
+          entry.enabled = nextChecked;
           syncResultMarkerVisibility(window.AwesomeMap, entry);
         });
 
-        updateDistrictCouncilGroupState(group);
+        syncMarkerControlStates(group.markers);
         return;
       }
 
       const budgetYearGroupSelector = event.target.closest(".awesome_map-budget-year-selector");
       if (budgetYearGroupSelector) {
         event.stopPropagation();
+        const nextChecked = budgetYearGroupSelector.checked;
         const groupContainer = budgetYearGroupSelector.closest(".awesome_map-budget-year-group");
         const group = Object.values(budgetYearGroups).find((item) => item.id === groupContainer?.dataset.groupId);
         if (!group) return;
 
         group.markers.forEach((entry) => {
-          entry.budgetYearEnabled = budgetYearGroupSelector.checked;
-          const markerInput = groupContainer.querySelector(`[data-marker-id="${entry.id}"] .awesome_map-budget-year-marker-selector`);
-          if (markerInput) markerInput.checked = budgetYearGroupSelector.checked;
+          entry.budgetYearEnabled = nextChecked;
           syncResultMarkerVisibility(window.AwesomeMap, entry);
         });
 
-        updateBudgetYearGroupState(group);
+        syncMarkerControlStates(group.markers);
         return;
       }
 
@@ -843,9 +933,7 @@
 
         entry.enabled = markerSelector.checked;
         syncResultMarkerVisibility(window.AwesomeMap, entry);
-
-        const group = districtCouncilGroups[entry.districtCouncilName];
-        if (group) updateDistrictCouncilGroupState(group);
+        syncMarkerControlState(entry);
         window.requestAnimationFrame(adjustMapControlHeights);
         return;
       }
@@ -860,9 +948,7 @@
 
       entry.budgetYearEnabled = budgetYearMarkerSelector.checked;
       syncResultMarkerVisibility(window.AwesomeMap, entry);
-
-      const group = budgetYearGroups[entry.budgetYearName];
-      if (group) updateBudgetYearGroupState(group);
+      syncMarkerControlState(entry);
       window.requestAnimationFrame(adjustMapControlHeights);
     });
 
