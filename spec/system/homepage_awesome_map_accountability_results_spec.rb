@@ -16,6 +16,21 @@ describe "Homepage awesome map with accountability results", type: :system do
 
   let!(:participatory_process) { create(:participatory_process, :with_steps, organization: organization) }
   let!(:accountability_component) { create(:accountability_component, :published, participatory_space: participatory_process) }
+  let!(:budget_taxonomy_root) do
+    create(
+      :taxonomy,
+      organization: organization,
+      name: { ca: "Pressupostos" }
+    )
+  end
+  let!(:budget_taxonomy_2024) do
+    create(
+      :taxonomy,
+      organization: organization,
+      parent: budget_taxonomy_root,
+      name: { ca: "Pressupostos 2024" }
+    )
+  end
   let!(:proposal_component) do
     create(
       :proposal_component,
@@ -35,6 +50,7 @@ describe "Homepage awesome map with accountability results", type: :system do
     create(
       :result,
       component: accountability_component,
+      taxonomies: [budget_taxonomy_2024],
       latitude: 41.47330,
       longitude: 2.07974,
       address: "Passeig de la Creu, 1-5"
@@ -89,8 +105,14 @@ describe "Homepage awesome map with accountability results", type: :system do
     expect(page.body).to include("awesome_map-district-councils-control")
     expect(page.body).to include("awesome_map-district-council-selector")
     expect(page.body).to include("awesome_map-district-council-marker-selector")
+    expect(page.body).to include("awesome_map-budget-years-control")
+    expect(page.body).to include("awesome_map-budget-year-selector")
+    expect(page.body).to include("awesome_map-budget-year-marker-selector")
     expect(page.body).to include('stroke="#000"')
     expect(page.body).to include("results(first: 50")
+    expect(page.body).to include("budgetYearDataForNode")
+    expect(page.body).to include("taxonomies {")
+    expect(page.body).to include("parent {")
     expect(page.body).to include(%("id":#{accountability_component.id}))
     expect(page.body).to include("Resultat")
     expect(result.latitude).to be_present
