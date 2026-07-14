@@ -103,7 +103,7 @@ Rails.application.configure do
     config.logger = ActiveSupport::TaggedLogging.new(logger)
   else
     # Rotate daily, keep 10 days of history.
-    logger = ActiveSupport::Logger.new(Rails.root.join("log", "#{Rails.env}.log"), 30, "daily")
+    logger = ActiveSupport::Logger.new(Rails.root.join("log", "#{Rails.env}.log"), "daily", 30)
     logger.formatter = config.log_formatter
     config.logger = ActiveSupport::TaggedLogging.new(logger)
   end
