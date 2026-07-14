@@ -11,7 +11,7 @@ build_sidekiq_logger = lambda do
     Sidekiq::Logger.new($stdout)
   else
     # Rotate daily, keep 10 days of history.
-    Sidekiq::Logger.new(Rails.root.join("log", "sidekiq.log"), 30, "daily")
+    Sidekiq::Logger.new(Rails.root.join("log", "sidekiq.log"), "daily", 30)
   end
 
   logger.level = Logger.const_get(sidekiq_log_level)
