@@ -129,6 +129,8 @@
   const budgetYearsTitle = "Pressupostos";
   const budgetYearFallbackName = htmlLang === "ca" ? "Sense pressupost" : "Without budget";
   const budgetYearNamePattern = /\b(?:pressupost(?:os)?|presupuesto(?:s)?|budget(?:s)?)\b.*\b(20\d{2})\b/i;
+    const showMapFiltersLabel = htmlLang === "ca" ? "Mostrar filtres del mapa" : "Show map filters";
+    const hideMapFiltersLabel = htmlLang === "ca" ? "Ocultar filtres del mapa" : "Hide map filters";
 
     const hideLoadingSpinner = (awesomeMap) => {
       if (awesomeMap.controls && awesomeMap.controls.loading) {
@@ -312,6 +314,40 @@
       if (!zoomControl || !rightTopControls || rightTopControls.contains(zoomControl)) return;
 
       rightTopControls.prepend(zoomControl);
+    };
+
+    const updateMapFiltersToggleState = (toggleButton, filtersPanel) => {
+      if (!toggleButton || !filtersPanel) return;
+
+      const isHidden = filtersPanel.classList.contains("awesome_map-filters-hidden");
+      toggleButton.setAttribute("aria-pressed", isHidden ? "false" : "true");
+      toggleButton.setAttribute("aria-label", isHidden ? showMapFiltersLabel : hideMapFiltersLabel);
+      toggleButton.setAttribute("title", isHidden ? showMapFiltersLabel : hideMapFiltersLabel);
+      toggleButton.classList.toggle("active", !isHidden);
+    };
+
+    const ensureMapFiltersToggle = () => {
+      const rightTopControls = document.querySelector("#awesome-map .leaflet-top.leaflet-right");
+      const filtersPanel = document.querySelector("#awesome-map .leaflet-control-layers");
+      if (!rightTopControls || !filtersPanel) return;
+
+      let filtersToggle = document.querySelector("#awesome-map .awesome_map-filters-toggle");
+      if (!filtersToggle) {
+        rightTopControls.insertAdjacentHTML("beforeend", `
+          <div class="leaflet-control leaflet-bar awesome_map-filters-toggle-control">
+            <button type="button" class="awesome_map-filters-toggle" aria-pressed="true" aria-controls="awesome-map-filters-panel">
+              <span class="sr-only">${hideMapFiltersLabel}</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M3 5h18l-7 8v5l-4 2v-7L3 5z" fill="currentColor"></path>
+              </svg>
+            </button>
+          </div>
+        `);
+        filtersToggle = document.querySelector("#awesome-map .awesome_map-filters-toggle");
+      }
+
+      filtersPanel.id = "awesome-map-filters-panel";
+      updateMapFiltersToggleState(filtersToggle, filtersPanel);
     };
 
     const removeProposalFilters = () => {
@@ -859,6 +895,7 @@
       }
 
       moveZoomControlsToRight();
+      ensureMapFiltersToggle();
       hideLoadingSpinner(window.AwesomeMap);
       watchLayerControls();
       containMapControlScroll();
@@ -873,6 +910,20 @@
     };
 
     document.addEventListener("click", (event) => {
+      const filtersToggle = event.target.closest(".awesome_map-filters-toggle");
+      if (filtersToggle) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const filtersPanel = document.querySelector("#awesome-map .leaflet-control-layers");
+        if (!filtersPanel) return;
+
+        filtersPanel.classList.toggle("awesome_map-filters-hidden");
+        updateMapFiltersToggleState(filtersToggle, filtersPanel);
+        window.requestAnimationFrame(adjustMapControlHeights);
+        return;
+      }
+
       const title = event.target.closest(".awesome_map-title-control[data-target-control]");
       if (!title) return;
 
@@ -970,9 +1021,46 @@
 </script>
 
 <style>
+  #awesome-map .leaflet-top.leaflet-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+  }
+
   #awesome-map .leaflet-control-layers {
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+
+  #awesome-map .leaflet-control-layers.awesome_map-filters-hidden {
+    display: none;
+  }
+
+  #awesome-map .awesome_map-filters-toggle-control {
+    margin-top: 0;
+  }
+
+  #awesome-map .awesome_map-filters-toggle {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: #fff;
+    color: #2c3943;
+    cursor: pointer;
+    line-height: 30px;
+  }
+
+  #awesome-map .awesome_map-filters-toggle.active {
+    background: #f3f4f6;
+  }
+
+  #awesome-map .awesome_map-filters-toggle svg {
+    width: 18px;
+    height: 18px;
   }
 
   #awesome_map-district-councils-control {
