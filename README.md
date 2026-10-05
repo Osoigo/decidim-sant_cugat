@@ -43,3 +43,6 @@ Measure 3 of the anti-bot plan, after the September 2026 account analysis.
   no timestamp in session yet, so the page itself would be treated as spam.
 - The signup page must not be served from a shared cache or a caching proxy: the timestamp lives
   in the session.
+- The disposable email domain list travels inside the `valid_email2` gem. Run
+  `bundle update valid_email2 --conservative` periodically, ideally as part of the release
+  routine: between 7.0.13 and 7.1.0 the list grew by around 10.000 domains.
