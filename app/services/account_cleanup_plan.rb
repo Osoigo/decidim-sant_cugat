@@ -52,6 +52,23 @@ class AccountCleanupPlan
     decisions.values.tally.sort_by { |_decision, count| -count }.to_h
   end
 
+  # De dónde sale la protección de las cuentas verificadas. Importa porque las
+  # autorizaciones vigentes caducan y se revocan: casi toda la protección viene
+  # del historial reconstruido sobre la tabla versions, no de la tabla de
+  # autorizaciones. Si este desglose se desequilibra, el criterio deja de
+  # proteger lo que creemos.
+  def verification_breakdown
+    protegidas = Set.new(ids_for(:verificada))
+    fuentes = verification_sources
+
+    {
+      total: protegidas.size,
+      con_autorizacion_vigente: (protegidas & fuentes[:vigente]).size,
+      solo_por_historial: (protegidas - fuentes[:vigente]).size,
+      por_transferencia: (protegidas & fuentes[:transferencia]).size
+    }
+  end
+
   private
 
   attr_reader :scope
@@ -135,10 +152,16 @@ class AccountCleanupPlan
 
   def verified_ids
     ids = Set.new
-    ids.merge(pluck_safe("autorizaciones") { Decidim::Authorization.pluck(:decidim_user_id) })
-    ids.merge(pluck_safe("historial de autorizaciones") { authorization_history_ids })
-    ids.merge(pluck_safe("transferencias") { Decidim::AuthorizationTransfer.pluck(:user_id, :source_user_id).flatten })
+    verification_sources.each_value { |fuente| ids.merge(fuente) }
     ids.delete(nil)
+  end
+
+  def verification_sources
+    @verification_sources ||= {
+      vigente: Set.new(pluck_safe("autorizaciones") { Decidim::Authorization.pluck(:decidim_user_id) }).tap { |s| s.delete(nil) },
+      historial: Set.new(pluck_safe("historial de autorizaciones") { authorization_history_ids }).tap { |s| s.delete(nil) },
+      transferencia: Set.new(pluck_safe("transferencias") { Decidim::AuthorizationTransfer.pluck(:user_id, :source_user_id).flatten }).tap { |s| s.delete(nil) }
+    }
   end
 
   def authorization_history_ids

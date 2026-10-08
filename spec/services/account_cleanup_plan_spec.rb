@@ -109,6 +109,21 @@ describe AccountCleanupPlan do
     it { is_expected.to eq(:ya_bloqueada) }
   end
 
+  describe "#verification_breakdown" do
+    it "separates a live authorization from one that only survives in the history", versioning: true do
+      vigente = create(:user, :confirmed, organization:)
+      revocada = create(:user, :confirmed, organization:)
+      create(:authorization, name: "census_authorization_handler", user: vigente)
+      create(:authorization, name: "census_authorization_handler", user: revocada).destroy!
+
+      desglose = described_class.new.verification_breakdown
+
+      expect(desglose[:total]).to eq(2)
+      expect(desglose[:con_autorizacion_vigente]).to eq(1)
+      expect(desglose[:solo_por_historial]).to eq(1)
+    end
+  end
+
   describe "#counts" do
     before do
       create(:user, :confirmed, organization:)

@@ -105,6 +105,13 @@ ETIQUETAS.each do |decision, etiqueta|
 end
 puts format("  %-62s %8d", "Total de cuentas no borradas", decisiones.size)
 puts
+desglose = plan.verification_breakdown
+puts "De dónde sale la protección de las verificadas"
+puts format("  %-62s %8d", "Con autorización censal vigente", desglose[:con_autorizacion_vigente])
+puts format("  %-62s %8d", "Solo por el historial de versions, ya revocada", desglose[:solo_por_historial])
+puts format("  %-62s %8d", "Por transferencia de autorización", desglose[:por_transferencia])
+puts
+
 
 a_borrar = plan.ids_for(:borrar)
 a_bloquear = plan.ids_for(:bloquear)
