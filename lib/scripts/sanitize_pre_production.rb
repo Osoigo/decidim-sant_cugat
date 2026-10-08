@@ -8,11 +8,19 @@
 #
 #   1. Vacía la configuración SMTP de cada organización. Decidim permite que
 #      cada tenant tenga su propio servidor de correo y la fusiona en el método
-#      de entrega al enviar, así que no basta con la configuración del entorno.
+#      de entrega al enviar. Hoy esa columna está vacía en producción, así que
+#      el volcado no trae nada, pero se limpia igual por si algún día se usa.
 #   2. Vacía la configuración de acceso con proveedores externos del tenant,
 #      para que nadie entre en pre con las credenciales de producción.
 #   3. Apunta el host de la organización al de pre, que además es necesario
 #      para que la aplicación resuelva el tenant.
+#
+# Lo que de verdad impide que salga correo es el entorno, no la base de datos:
+# config/environments/staging.rb fija delivery_method = :test, y la fusión que
+# hace Decidim::ApplicationMailer#set_smtp cambia las credenciales del objeto
+# de entrega pero nunca su clase. Por eso el script se planta si el entorno no
+# tiene el correo contenido: en ese caso el problema no se arregla vaciando el
+# tenant.
 #
 # Al final imprime una verificación del entorno: método de entrega de correo,
 # servicio de almacenamiento y organizaciones. El almacenamiento importa: si
@@ -27,6 +35,16 @@ abort("Este script no se ejecuta en producción. Es solo para pre-producción.")
 
 host = ENV["PRE_HOST"].to_s.strip
 abort("Define PRE_HOST con el host de pre, por ejemplo PRE_HOST=santcugat-pre.osoigonext.com") if host.empty?
+
+correo_contenido = ActionMailer::Base.delivery_method == :test || !ActionMailer::Base.perform_deliveries
+unless correo_contenido || ENV["FORZAR"].present?
+  abort(
+    "ALTO: en este entorno (#{Rails.env}) el correo se entregaría de verdad, con el método " \
+    "#{ActionMailer::Base.delivery_method.inspect}. Vaciar el SMTP del tenant no lo impide: la " \
+    "configuración del entorno es la que decide el método de entrega. Arregla " \
+    "config/environments/#{Rails.env}.rb antes de seguir, o pasa FORZAR=1 si sabes lo que haces."
+  )
+end
 
 organizations = Decidim::Organization.order(:id).to_a
 abort("No hay ninguna organización en la base de datos.") if organizations.empty?
@@ -65,6 +83,9 @@ puts "Verificación del entorno"
 puts "  RAILS_ENV:                 #{Rails.env}"
 puts "  entrega de correo:         #{ActionMailer::Base.delivery_method}"
 puts "  envío efectivo:            #{ActionMailer::Base.perform_deliveries ? 'ACTIVADO' : 'desactivado'}"
+correo = Mail.new
+ActionMailer::Base.wrap_delivery_behavior(correo)
+puts "  objeto de entrega real:    #{correo.delivery_method.class}"
 service = begin
   ActiveStorage::Blob.service
 rescue StandardError => e
@@ -79,12 +100,8 @@ end
 puts "  cuentas en la base:        #{Decidim::User.where(deleted_at: nil).count}"
 puts
 
-correo_contenido = ActionMailer::Base.delivery_method == :test || !ActionMailer::Base.perform_deliveries
-if correo_contenido
-  puts "Correo: no sale nada de este servidor."
-else
-  puts "AVISO: el correo se entregaría de verdad, con el método #{ActionMailer::Base.delivery_method}. " \
-       "Revisa config/environments/#{Rails.env}.rb antes de tocar ninguna cuenta."
-end
+puts "Correo: no sale nada de este proceso."
+puts "Comprueba aparte el entorno del worker, que es quien entrega de verdad los correos encolados:"
+puts "  grep ExecStart ~/.config/systemd/user/sidekiq.service   # tiene que decir -e #{Rails.env}"
 puts "Comprueba que el bucket de arriba NO es el de producción antes de borrar ninguna cuenta: borrar una cuenta purga su avatar."
 nil
