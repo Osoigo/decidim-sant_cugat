@@ -27,6 +27,10 @@
 #
 # El registro anota una línea por cuenta con la acción realizada, así que si la
 # ejecución se corta se puede relanzar: las cuentas ya tratadas se saltan.
+#
+# Antes de hacer nada comprueba que el bucket de ActiveStorage no es el de
+# producción cuando el entorno no lo es, porque borrar una cuenta purga su
+# avatar y las credenciales de AWS son las mismas en los dos servidores.
 
 require "set"
 
@@ -40,6 +44,24 @@ MOTIVO = "Limpieza de cuentas de spam acordada con el Ayuntamiento, octubre de 2
          "Cuenta sin verificación censal, sin participación y con señales de spam."
 SELLO = Time.current.strftime("%Y%m%d_%H%M")
 REGISTRO = ENV.fetch("REGISTRO", Rails.root.join("tmp", "limpieza_#{SELLO}.log").to_s)
+
+# Borrar una cuenta purga su avatar, y el avatar vive en S3. Los dos entornos
+# usan el mismo nombre de servicio (:amazon) y la misma clave de AWS: lo único
+# que separa el bucket de pre del de producción es una línea de secrets.yml.
+# Si alguna vez se copia el secrets.yml de producción a pre, un ensayo
+# borraría ficheros reales, así que aquí se comprueba antes de empezar.
+BUCKET_PRODUCCION = "santcugat-pro"
+SERVICIO = ActiveStorage::Blob.service
+BUCKET = SERVICIO.try(:bucket)&.name || SERVICIO.try(:root) || "desconocido"
+
+if BUCKET == BUCKET_PRODUCCION && !Rails.env.production?
+  abort(
+    "ALTO: el entorno es #{Rails.env} pero el almacenamiento apunta al bucket de PRODUCCIÓN " \
+    "(#{BUCKET}). Borrar cuentas aquí purgaría avatares reales. Revisa la clave " \
+    "storage.s3.bucket en shared/config/secrets.yml antes de seguir."
+  )
+end
+warn("AVISO: en producción el bucket esperado era #{BUCKET_PRODUCCION} y es #{BUCKET}.") if Rails.env.production? && BUCKET != BUCKET_PRODUCCION
 
 def log(mensaje)
   puts "[#{Time.current.strftime('%H:%M:%S')}] #{mensaje}"
@@ -98,6 +120,18 @@ puts format("  %-62s %8d", "Cuentas a bloquear con ocultación de contenido", a_
 puts format("  %-62s %8d", "Cuentas que no se tocan", decisiones.size - a_borrar.size - a_bloquear.size)
 puts "  Grupo pendiente: #{PENDIENTE == 'borrar' ? 'se borra' : 'no se toca'} · Ya bloqueadas: #{BLOQUEADAS == 'borrar' ? 'se borran' : 'no se tocan'}"
 puts "  Límite por grupo: #{LIMITE || 'sin límite'}"
+puts
+
+# Medido contra S3 el 8 de octubre de 2026: 88 ms por avatar, entre el DELETE
+# del original y el LIST con borrado por lotes de sus variantes. Con más de
+# cien mil avatares eso son horas, así que conviene saberlo antes de empezar.
+SEGUNDOS_POR_AVATAR = 0.088
+ids_estimados = LIMITE ? a_borrar.first(LIMITE) : a_borrar
+con_avatar = ids_estimados.each_slice(5_000).sum { |lote| Decidim::User.where(id: lote).joins(:avatar_attachment).count }
+puts "Almacenamiento"
+puts format("  %-62s %8s", "Bucket de ActiveStorage", BUCKET)
+puts format("  %-62s %8d", "Cuentas a borrar que tienen avatar", con_avatar)
+puts format("  %-62s %8.1f h", "Tiempo estimado solo en purgar avatares en S3", con_avatar * SEGUNDOS_POR_AVATAR / 3600.0)
 puts
 
 def muestra(ids, titulo)
