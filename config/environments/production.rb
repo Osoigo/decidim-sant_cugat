@@ -102,8 +102,9 @@ Rails.application.configure do
     logger.formatter = config.log_formatter
     config.logger = ActiveSupport::TaggedLogging.new(logger)
   else
-    # Rotate daily, keep 10 days of history.
-    logger = ActiveSupport::Logger.new(Rails.root.join("log", "#{Rails.env}.log"), "daily", 30)
+    # Rotation is handled by logrotate through its systemd timer (logrotate.timer),
+    # configured by https://github.com/Osoigo/sant-cugat-installer
+    logger = ActiveSupport::Logger.new(Rails.root.join("log", "#{Rails.env}.log"))
     logger.formatter = config.log_formatter
     config.logger = ActiveSupport::TaggedLogging.new(logger)
   end

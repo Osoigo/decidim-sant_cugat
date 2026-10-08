@@ -10,8 +10,9 @@ build_sidekiq_logger = lambda do
   logger = if sidekiq_log_to_stdout
     Sidekiq::Logger.new($stdout)
   else
-    # Rotate daily, keep 10 days of history.
-    Sidekiq::Logger.new(Rails.root.join("log", "sidekiq.log"), "daily", 30)
+    # Rotation is handled by logrotate through its systemd timer (logrotate.timer),
+    # configured by https://github.com/Osoigo/sant-cugat-installer
+    Sidekiq::Logger.new(Rails.root.join("log", "sidekiq.log"))
   end
 
   logger.level = Logger.const_get(sidekiq_log_level)
