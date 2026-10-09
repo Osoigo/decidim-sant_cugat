@@ -141,18 +141,43 @@ puts format("  %-62s %8d", "Cuentas a borrar que tienen avatar", con_avatar)
 puts format("  %-62s %8.1f h", "Tiempo estimado solo en purgar avatares en S3", con_avatar * SEGUNDOS_POR_AVATAR / 3600.0)
 puts
 
-def muestra(ids, titulo)
+# Al azar y no las primeras por id: las primeras son siempre las más antiguas,
+# que es justo la muestra menos representativa de un grupo donde la mayoría son
+# cuentas recientes.
+def muestra(ids, titulo, cuantas = 8)
   return if ids.empty?
 
-  puts "#{titulo}, muestra de #{[ids.size, 5].min}:"
-  Decidim::User.where(id: ids.first(5)).each do |u|
-    puts format("  %-8s %-28s %-32s creada %s", u.id, u.name.to_s[0, 26], u.email.to_s[0, 30], u.created_at.to_date)
+  elegidas = ids.sample(cuantas)
+  puts "#{titulo}: muestra al azar de #{elegidas.size} sobre #{ids.size}"
+  Decidim::User.where(id: elegidas).order(:created_at).each do |u|
+    señas = [u.personal_url.presence && "url", u.about.presence && "texto"].compact.join(" ")
+    puts format("  %-8s %-26s %-30s %s  %s", u.id, u.name.to_s[0, 24], u.email.to_s[0, 28], u.created_at.to_date, señas)
   end
   puts
 end
 
+# El reparto por año es lo que de verdad necesita el Ayuntamiento para decidir:
+# una cuenta de 2017 sin contenido es un vecino que se registró y no volvió,
+# una de 2025 sin contenido es un bot. El criterio las trata igual.
+def por_anyo(ids, titulo)
+  return if ids.empty?
+
+  conteo = Hash.new(0)
+  ids.each_slice(5_000) do |lote|
+    Decidim::User.where(id: lote).pluck(:created_at).each { |fecha| conteo[fecha.year] += 1 }
+  end
+  escala = [conteo.values.max / 40.0, 1].max
+
+  puts "#{titulo}: reparto por año de registro"
+  conteo.sort.each do |anyo, n|
+    puts format("  %d %8d  %s", anyo, n, "#" * [(n / escala).round, 1].max)
+  end
+  puts
+end
+
+por_anyo(a_borrar, "A borrar")
 muestra(a_borrar, "A borrar")
-muestra(a_bloquear, "A bloquear")
+muestra(a_bloquear, "A bloquear, con la señal de spam que las delata")
 muestra(pendientes, "Grupo pendiente, para que lo revise el Ayuntamiento")
 
 unless APLICAR
