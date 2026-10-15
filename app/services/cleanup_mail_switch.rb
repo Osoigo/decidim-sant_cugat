@@ -51,7 +51,12 @@ class CleanupMailSwitch
   # Se interpone en la entrega, no en la generación: así cubre cualquier correo
   # que nazca de la limpieza, venga del mailer que venga.
   module SaltarEntrega
-    def perform(*)
+    # Con (...) y no (*): ActionMailer::MailDeliveryJob#perform recibe tres
+    # posicionales y varios argumentos con nombre, y (*) no captura los
+    # segundos. En Ruby 3 se convertirían en un hash posicional de más y el
+    # super reventaría con ArgumentError, rompiendo la entrega de todo el
+    # correo justo cuando el interruptor está apagado, que es lo normal.
+    def perform(...)
       return if CleanupMailSwitch.silenciado?
 
       super
