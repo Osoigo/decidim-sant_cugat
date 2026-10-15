@@ -115,6 +115,7 @@ ETIQUETAS = {
   gestionada: "Conservar: votaron sin registrarse, identificándose contra el censo",
   verificada: "Conservar: verificación censal vigente o pasada",
   participo: "Conservar: participación anterior a noviembre de 2020",
+  veterana_activa: "Conservar: anterior a 2021 y con acceso en los últimos 3 años",
   pendiente: "Grupo pendiente: con contenido y sin señales de spam",
   bloquear: "Bloquear y ocultar: con contenido y señales de spam",
   borrar: "Borrar: sin ningún contenido",

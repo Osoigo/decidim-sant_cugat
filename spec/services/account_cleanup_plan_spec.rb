@@ -99,6 +99,37 @@ describe AccountCleanupPlan do
     it { is_expected.to eq(:pendiente) }
   end
 
+  context "when a pre-2021 account with nothing to its name is still being used" do
+    let(:user) do
+      create(:user, :confirmed, organization:, personal_url: nil, about: "",
+                                created_at: Time.zone.parse("2019-06-01"), last_sign_in_at: 2.months.ago)
+    end
+
+    it "is kept: somebody still signs in, they just never posted" do
+      expect(decision).to eq(:veterana_activa)
+    end
+  end
+
+  context "when that same account stopped signing in years ago" do
+    let(:user) do
+      create(:user, :confirmed, organization:, personal_url: nil, about: "",
+                                created_at: Time.zone.parse("2019-06-01"), last_sign_in_at: Time.zone.parse("2020-02-01"))
+    end
+
+    it { is_expected.to eq(:borrar) }
+  end
+
+  context "when a recent account signed in just now" do
+    let(:user) do
+      create(:user, :confirmed, organization:, personal_url: nil, about: "",
+                                created_at: 2.months.ago, last_sign_in_at: 2.months.ago)
+    end
+
+    it "is deleted anyway: a bot signs in once when it registers" do
+      expect(decision).to eq(:borrar)
+    end
+  end
+
   context "when the account has nothing at all" do
     it { is_expected.to eq(:borrar) }
   end

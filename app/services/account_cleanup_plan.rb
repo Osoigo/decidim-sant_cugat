@@ -20,6 +20,8 @@
 #                no significa que no se verificaran
 #   :bloquear    con contenido y señales claras de spam
 #   :borrar      sin ningún contenido
+#   :veterana_activa  anterior a 2021, sin contenido, pero con acceso en los
+#                últimos tres años: alguien que sigue usando su cuenta
 #   :pendiente   con contenido y sin señales de spam: la decisión que el
 #                Ayuntamiento se reservó sobre 5.072 cuentas
 #   :ya_bloqueada cuentas que administración ya bloqueó
@@ -33,7 +35,17 @@ class AccountCleanupPlan
   SPAM_WORDS = /\b(?:casino|bet|bets|betting|slot|slots|poker|jackpot|bonus|apk|seo|escort|loan|crypto|forex|viagra|cbd|vape|shop|store|agency|marketing|packers|movers|taxi|cab|hotel|tour|travel|clothing|outfit|jewell?ers|nha ?cai|vip|xxx|porn|dating|hack|cheap|discount|review|reviews|digital|studio|consulting|clinic|repair|cleaning|plumber|lawyer|insurance|rental|logistics|trading)\b/i
   URL_RE = %r{https?://|www\.|\b[a-z0-9-]+\.(?:com|net|org|info|biz|io|xyz|top|site|online|shop|store|app|vn|in|ru|cn|co|me|pro|club|live|fun|icu)\b}i
 
-  KEEP = %i[gestion gestionada verificada participo].freeze
+  KEEP = %i[gestion gestionada verificada participo veterana_activa].freeze
+
+  # Una cuenta anterior a 2021 que ha entrado en los últimos tres años es un
+  # vecino que sigue usando la plataforma, aunque nunca haya publicado nada.
+  #
+  # El acceso reciente por sí solo no sirve: el 76% del grupo a borrar "ha
+  # entrado" en tres años, porque un bot entra una vez al registrarse y
+  # last_sign_in_at queda igual a created_at. Cruzado con la antigüedad sí
+  # distingue. En producción, en octubre de 2026, son 10 cuentas de 166.166.
+  VETERANA_ANTES_DE = Time.zone.parse("2021-01-01")
+  ACCESO_RECIENTE = 3
 
   # Motivos de moderación que genera esta misma limpieza: "hidden_during_block"
   # al ocultar el contenido de una cuenta bloqueada, y "parent_hidden" en las
@@ -113,7 +125,7 @@ class AccountCleanupPlan
   end
 
   def columns
-    %i[id created_at name nickname email personal_url about admin managed officialized_at roles blocked extended_data]
+    %i[id created_at last_sign_in_at name nickname email personal_url about admin managed officialized_at roles blocked extended_data]
   end
 
   def decide(user, management:, verified:, content:, identity_participation:, flagged:)
@@ -122,6 +134,7 @@ class AccountCleanupPlan
     return :gestionada if user.managed?
     return :verificada if verified.include?(user.id)
     return :participo if before_history?(user) && identity_participation.include?(user.id)
+    return :veterana_activa if !content.include?(user.id) && veterana_activa?(user)
     return :borrar unless content.include?(user.id)
     return :bloquear if spam_signals?(user, flagged)
 
@@ -130,6 +143,13 @@ class AccountCleanupPlan
 
   def before_history?(user)
     user.created_at < HISTORY_STARTS_AT
+  end
+
+  def veterana_activa?(user)
+    return false unless user.created_at < VETERANA_ANTES_DE
+    return false if user.last_sign_in_at.nil?
+
+    user.last_sign_in_at >= ACCESO_RECIENTE.years.ago
   end
 
   def spam_signals?(user, flagged)
