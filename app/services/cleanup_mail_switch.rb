@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Interruptor para callar el correo durante la limpieza masiva de cuentas.
+# Apagón del correo durante la limpieza masiva de cuentas.
 #
 # Hace falta porque al bloquear una cuenta con ocultación de contenido, Decidim
 # publica un ResourceHiddenEvent por cada contenido ocultado, con
@@ -14,25 +14,40 @@
 # hacia direcciones de bots.
 #
 # El parche que anula BlockUserMailer en el script no sirve aquí: estos correos
-# los genera Sidekiq, en otro proceso. Por eso la bandera vive en Redis, que
-# comparten el script y los workers, y por eso se interpone en el propio
-# trabajo de entrega.
+# los genera Sidekiq, en otro proceso. Por eso el apagón se interpone en el
+# propio trabajo de entrega, que es por donde pasan todos.
 #
-# Es una cuenta y no una bandera porque la limpieza se lanza en varios
-# procesos a la vez, repartidos por rangos de id. Con una bandera, el primero
-# en terminar reactivaría el correo mientras los demás siguen bloqueando
-# cuentas. Cada proceso suma al entrar y resta al salir; el correo sigue
-# callado mientras quede alguno.
+# Y está apagado sin condición, no detrás de una bandera, porque esta rama no
+# se fusiona en master: se despliega para la ventana de limpieza y al terminar
+# se vuelve a desplegar master, que es lo que devuelve el correo.
 #
-# Caduca sola a las 12 horas: si un proceso muere sin restar, el correo se
-# recupera sin intervención en lugar de quedarse mudo para siempre.
+# Con una bandera había tres maneras de que se escapara un correo:
+#
+#   - Las colas. Ocultar el contenido de una cuenta bloqueada encola un aviso
+#     por cada contenido —1.381 en el ensayo de pre con 248 cuentas— y los
+#     workers los digieren minutos después de que el script haya terminado. Al
+#     salir el último proceso, la bandera caía con miles de avisos aún en cola.
+#   - Un proceso que muriera sin restar de la cuenta, o la caducidad de 12
+#     horas, devolvían el correo a media limpieza.
+#   - Un Redis que no respondiera: el apagón se consultaba en la entrega de
+#     cada correo y ante la duda dejaba pasar.
+#
+# Lo que cuesta: mientras esta rama esté desplegada no sale ni un correo de la
+# plataforma. Es asumible porque está cerrada durante la ventana, y es el
+# orden de reapertura acordado: primero volver a master, después quitar el
+# mantenimiento. Antes de volver a master hay que comprobar que las colas
+# están vacías, porque lo que quede encolado sí se entregaría.
+#
+# La cuenta de procesos se conserva para la traza: dice cuántas limpiezas hay
+# corriendo, pero ya no decide si el correo sale.
 class CleanupMailSwitch
   CLAVE = "limpieza:correo_silenciado"
   CADUCIDAD = 12 * 60 * 60
+  APAGADO_POR_CODIGO = true
 
   class << self
     def silenciado?
-      procesos_silenciando.positive?
+      APAGADO_POR_CODIGO || procesos_silenciando.positive?
     end
 
     # Devuelve cuántos procesos están silenciando tras entrar este.

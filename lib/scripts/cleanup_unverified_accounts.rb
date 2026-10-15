@@ -226,20 +226,17 @@ registro.sync = true
 log "Registro en #{REGISTRO}"
 
 # El parche de BlockUserMailer de arriba solo vale en este proceso. Los avisos
-# de contenido ocultado los genera Sidekiq, así que hace falta una bandera que
-# vean también los workers. Se reactiva pase lo que pase, y además caduca sola.
+# de contenido ocultado los genera Sidekiq, y esos los para CleanupMailSwitch,
+# que en esta rama tiene el correo apagado por código: no depende de que este
+# script entre ni salga. Lo que se lleva la cuenta es solo para la traza.
 CleanupMailSwitch.silenciar!
 at_exit do
   quedan = CleanupMailSwitch.reactivar!
-  warn(
-    if quedan.positive?
-      "Correo: este proceso sale, pero quedan #{quedan} silenciando todavía."
-    else
-      "Correo reactivado (#{CleanupMailSwitch.silenciado? ? 'SIGUE SILENCIADO, revísalo' : 'comprobado'})."
-    end
-  )
+  warn("Correo: sigue apagado por código; quedan #{quedan} limpiezas corriendo.")
 end
-log "Correo silenciado en todos los procesos mientras dure la limpieza."
+abort("ALTO: el correo no está apagado. Revisa CleanupMailSwitch antes de seguir.") unless CleanupMailSwitch.silenciado?
+
+log "Correo apagado por código mientras esta rama esté desplegada."
 
 # Purgado de avatares por lotes. ActiveStorage borra de uno en uno, 88 ms por
 # avatar medidos contra S3, y en producción hay 104.218 que purgar. La
@@ -330,4 +327,6 @@ log "Apodos antiguos reparados para poder tratarlas: #{reparados}."
 log "Ficheros purgados en S3: #{PURGA.claves_borradas} en #{PURGA.peticiones} peticiones, #{PURGA.prefijos_resueltos} prefijos listados."
 log "Quedan #{Decidim::User.where(deleted_at: nil).count} cuentas sin borrar en la base."
 log "La ocultación del contenido de las bloqueadas la hace Decidim en segundo plano: revisa que Sidekiq procese la cola."
+log "El correo vuelve al desplegar master, no al salir de aquí. Antes de desplegarlo, comprueba"
+log "que no quede nada en cola ni en reintentos: lo que quede se entregaría."
 nil

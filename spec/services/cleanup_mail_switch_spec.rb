@@ -35,6 +35,14 @@ describe CleanupMailSwitch do
 
       expect(job.recibido).to be_nil
     end
+
+    # Sin stubbear nada: mientras esta rama esté desplegada no sale un correo,
+    # y no hace falta que nadie encienda ninguna bandera.
+    it "drops it by default, because this branch keeps mail off while it is deployed" do
+      entregar
+
+      expect(job.recibido).to be_nil
+    end
   end
 
   describe "counting the processes that are silencing" do
@@ -51,19 +59,18 @@ describe CleanupMailSwitch do
 
     before { allow(Sidekiq).to receive(:redis) { |&bloque| bloque.call(redis) } }
 
-    it "silences while at least one process is still working" do
+    it "counts the processes that are still working" do
       described_class.silenciar!
       described_class.silenciar!
 
       expect(described_class.reactivar!).to eq(1)
-      expect(described_class.silenciado?).to be(true)
+      expect(described_class.procesos_silenciando).to eq(1)
     end
 
-    it "restores mail only when the last one leaves" do
+    it "goes back to zero when the last one leaves" do
       2.times { described_class.silenciar! }
       2.times { described_class.reactivar! }
 
-      expect(described_class.silenciado?).to be(false)
       expect(described_class.procesos_silenciando).to eq(0)
     end
 
@@ -72,15 +79,29 @@ describe CleanupMailSwitch do
       described_class.reactivar!
 
       expect(described_class.reactivar!).to eq(0)
-      expect(described_class.silenciado?).to be(false)
+      expect(described_class.procesos_silenciando).to eq(0)
+    end
+
+    # La cuenta es para la traza. Si decidiera, el correo volvería en cuanto
+    # saliera el último proceso, con los avisos de la ocultación aún en cola.
+    it "does not bring mail back when it empties" do
+      described_class.silenciar!
+      described_class.reactivar!
+
+      expect(described_class.silenciado?).to be(true)
     end
   end
 
   describe ".silenciado?" do
-    it "is false when Redis cannot be reached, so a broken switch never blocks mail" do
+    it "stays silent while this branch is deployed" do
+      expect(described_class.silenciado?).to be(true)
+    end
+
+    it "stays silent without asking Redis, so a Redis outage cannot let mail out" do
       allow(Sidekiq).to receive(:redis).and_raise(StandardError)
 
-      expect(described_class.silenciado?).to be(false)
+      expect(described_class.silenciado?).to be(true)
+      expect(Sidekiq).not_to have_received(:redis)
     end
   end
 end
