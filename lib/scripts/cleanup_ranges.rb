@@ -21,12 +21,17 @@
 cuantos = Integer(ENV.fetch("RANGOS", 4))
 abort("RANGOS tiene que estar entre 2 y 16") unless cuantos.between?(2, 16)
 
+# decidim_users guarda las cuentas y los grupos de usuarios en la misma tabla,
+# separados por la columna type. El plan solo mira cuentas, así que el reparto
+# también: si no, las cifras de aquí no cuadran con las del plan y hay que
+# explicar la diferencia cada vez.
 filas = ActiveRecord::Base.connection.select_all(<<~SQL)
   SELECT grupo, min(id) AS desde, max(id) AS hasta, count(*) AS cuentas
     FROM (
       SELECT id, ntile(#{cuantos}) OVER (ORDER BY id) AS grupo
         FROM decidim_users
        WHERE deleted_at IS NULL
+         AND type = 'Decidim::User'
     ) repartidas
    GROUP BY grupo
    ORDER BY grupo
