@@ -109,6 +109,35 @@ describe AccountCleanupPlan do
     it { is_expected.to eq(:ya_bloqueada) }
   end
 
+  context "when the only moderation on the content came from this cleanup" do
+    let(:user) { create(:user, :confirmed, organization:, name: "Mireia Puig", personal_url: nil, about: "") }
+    let(:comment) { create(:comment, author: user, commentable: create(:proposal, component:)) }
+
+    before do
+      moderation = create(:moderation, reportable: comment, participatory_space: component.participatory_space, hidden_at: Time.current)
+      create(:report, moderation:, reason: "parent_hidden")
+    end
+
+    it "is not treated as a spam signal: replying to a bot is not spam" do
+      expect(decision).to eq(:pendiente)
+    end
+  end
+
+  context "when a person reported the content for a reason of their own" do
+    let(:user) { create(:user, :confirmed, organization:, name: "Mireia Puig", personal_url: nil, about: "") }
+    let(:comment) { create(:comment, author: user, commentable: create(:proposal, component:)) }
+
+    before do
+      moderation = create(:moderation, reportable: comment, participatory_space: component.participatory_space, hidden_at: Time.current)
+      create(:report, moderation:, reason: "parent_hidden")
+      create(:report, moderation:, reason: "spam")
+    end
+
+    it "still counts" do
+      expect(decision).to eq(:bloquear)
+    end
+  end
+
   describe "#verification_breakdown" do
     it "separates a live authorization from one that only survives in the history", versioning: true do
       vigente = create(:user, :confirmed, organization:)

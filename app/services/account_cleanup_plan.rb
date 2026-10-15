@@ -35,6 +35,31 @@ class AccountCleanupPlan
 
   KEEP = %i[gestion gestionada verificada participo].freeze
 
+  # Motivos de moderación que genera esta misma limpieza: "hidden_during_block"
+  # al ocultar el contenido de una cuenta bloqueada, y "parent_hidden" en las
+  # respuestas a ese contenido, que son de otras personas.
+  #
+  # Hay que ignorarlos. Si no, cada pasada contamina la siguiente: al ocultar
+  # el comentario de un bot, quien le hubiera respondido queda marcado como
+  # moderado y la pasada siguiente lo lee como señal de spam. En el ensayo del
+  # 15 de octubre de 2026 eso metió 14 cuentas nuevas en el grupo a bloquear
+  # que en la primera pasada no estaban. Esta vez resultaron ser bots también,
+  # pero el mecanismo habría hecho lo mismo con un vecino que respondiera a uno.
+  CLEANUP_REASONS = %w[parent_hidden hidden_during_block].freeze
+
+  # Se descarta la moderación cuando tiene algún motivo nuestro y ninguno
+  # ajeno. Las que no tienen ningún reporte se conservan: no podemos
+  # atribuirlas a la limpieza.
+  SOLO_MOTIVOS_DE_LA_LIMPIEZA = <<~SQL.squish
+    EXISTS (
+      SELECT 1 FROM decidim_reports r
+       WHERE r.decidim_moderation_id = decidim_moderations.id AND r.reason IN (:propios)
+    ) AND NOT EXISTS (
+      SELECT 1 FROM decidim_reports r
+       WHERE r.decidim_moderation_id = decidim_moderations.id AND r.reason NOT IN (:propios)
+    )
+  SQL
+
   def initialize(scope: nil)
     @scope = scope || Decidim::User.where(deleted_at: nil)
   end
@@ -215,6 +240,7 @@ class AccountCleanupPlan
   def moderated_authors(type)
     reportable_ids = Decidim::Moderation.where(decidim_reportable_type: type)
                                         .where("report_count > 0 OR hidden_at IS NOT NULL")
+                                        .where.not(SOLO_MOTIVOS_DE_LA_LIMPIEZA, propios: CLEANUP_REASONS)
                                         .pluck(:decidim_reportable_id)
     return [] if reportable_ids.empty?
 
