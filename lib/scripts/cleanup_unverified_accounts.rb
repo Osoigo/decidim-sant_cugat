@@ -23,6 +23,11 @@
 #                      Por defecto no se tocan.
 #   LIMITE=100         actúa solo sobre las primeras N cuentas de cada grupo.
 #                      Útil para una primera pasada corta en pre.
+#   DESDE / HASTA      rango de id que trata este proceso. Permite lanzar
+#                      varios en paralelo sobre rangos disjuntos, que es lo que
+#                      acorta la ventana: el coste por cuenta son unos 0,37 s
+#                      de base de datos y no se puede bajar mucho más.
+#                      lib/scripts/cleanup_ranges.rb calcula los rangos.
 #   REGISTRO=ruta      fichero de registro. Por defecto tmp/limpieza_<fecha>.log
 #
 # El registro anota una línea por cuenta con la acción realizada, así que si la
@@ -51,7 +56,10 @@ LIMITE = ENV["LIMITE"].presence&.to_i
 MOTIVO = "Limpieza de cuentas de spam acordada con el Ayuntamiento, octubre de 2026. " \
          "Cuenta sin verificación censal, sin participación y con señales de spam."
 SELLO = Time.current.strftime("%Y%m%d_%H%M")
-REGISTRO = ENV.fetch("REGISTRO", Rails.root.join("tmp", "limpieza_#{SELLO}.log").to_s)
+DESDE = ENV["DESDE"].presence&.to_i
+HASTA = ENV["HASTA"].presence&.to_i
+SUFIJO = DESDE || HASTA ? "_#{DESDE || 'inicio'}-#{HASTA || 'fin'}" : ""
+REGISTRO = ENV.fetch("REGISTRO", Rails.root.join("tmp", "limpieza_#{SELLO}#{SUFIJO}.log").to_s)
 
 # Borrar una cuenta purga su avatar, y el avatar vive en S3. Los dos entornos
 # usan el mismo nombre de servicio (:amazon) y la misma clave de AWS: lo único
@@ -89,8 +97,16 @@ end
 
 Decidim::BlockUserMailer.singleton_class.prepend(SinCorreoDeBloqueo)
 
-plan = AccountCleanupPlan.new
-log "Clasificando cuentas..."
+# Cada proceso trata un rango de id distinto. Las consultas que alimentan el
+# criterio siguen siendo globales: lo que se reparte es a qué cuentas se
+# aplica, no con qué datos se decide, así que la clasificación no cambia por
+# trocearla.
+ambito = Decidim::User.where(deleted_at: nil)
+ambito = ambito.where(id: DESDE..) if DESDE
+ambito = ambito.where(id: ..HASTA) if HASTA
+
+plan = AccountCleanupPlan.new(scope: ambito)
+log "Clasificando cuentas#{DESDE || HASTA ? " con id de #{DESDE || 'inicio'} a #{HASTA || 'fin'}" : ''}..."
 decisiones = plan.decisions
 recuento = plan.counts
 
@@ -107,6 +123,7 @@ ETIQUETAS = {
 
 puts
 puts "Plan de limpieza #{APLICAR ? 'EJECUCIÓN REAL' : '(SIMULACIÓN, no se escribe nada)'}"
+puts "Rango de id: #{DESDE || 'inicio'} a #{HASTA || 'fin'}" if DESDE || HASTA
 puts "-" * 78
 ETIQUETAS.each do |decision, etiqueta|
   puts format("  %-62s %8d", etiqueta, recuento.fetch(decision, 0))
@@ -212,8 +229,14 @@ log "Registro en #{REGISTRO}"
 # vean también los workers. Se reactiva pase lo que pase, y además caduca sola.
 CleanupMailSwitch.silenciar!
 at_exit do
-  CleanupMailSwitch.reactivar!
-  warn("Correo reactivado (#{CleanupMailSwitch.silenciado? ? 'SIGUE SILENCIADO, revísalo' : 'comprobado'}).")
+  quedan = CleanupMailSwitch.reactivar!
+  warn(
+    if quedan.positive?
+      "Correo: este proceso sale, pero quedan #{quedan} silenciando todavía."
+    else
+      "Correo reactivado (#{CleanupMailSwitch.silenciado? ? 'SIGUE SILENCIADO, revísalo' : 'comprobado'})."
+    end
+  )
 end
 log "Correo silenciado en todos los procesos mientras dure la limpieza."
 

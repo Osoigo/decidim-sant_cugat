@@ -37,6 +37,45 @@ describe CleanupMailSwitch do
     end
   end
 
+  describe "counting the processes that are silencing" do
+    let(:redis) do
+      Class.new do
+        def initialize = @datos = {}
+        def incr(clave) = @datos[clave] = @datos.fetch(clave, 0) + 1
+        def decr(clave) = @datos[clave] = @datos.fetch(clave, 0) - 1
+        def get(clave) = @datos[clave]&.to_s
+        def del(clave) = @datos.delete(clave)
+        def expire(_clave, _segundos) = true
+      end.new
+    end
+
+    before { allow(Sidekiq).to receive(:redis) { |&bloque| bloque.call(redis) } }
+
+    it "silences while at least one process is still working" do
+      described_class.silenciar!
+      described_class.silenciar!
+
+      expect(described_class.reactivar!).to eq(1)
+      expect(described_class.silenciado?).to be(true)
+    end
+
+    it "restores mail only when the last one leaves" do
+      2.times { described_class.silenciar! }
+      2.times { described_class.reactivar! }
+
+      expect(described_class.silenciado?).to be(false)
+      expect(described_class.procesos_silenciando).to eq(0)
+    end
+
+    it "never goes below zero if someone releases twice" do
+      described_class.silenciar!
+      described_class.reactivar!
+
+      expect(described_class.reactivar!).to eq(0)
+      expect(described_class.silenciado?).to be(false)
+    end
+  end
+
   describe ".silenciado?" do
     it "is false when Redis cannot be reached, so a broken switch never blocks mail" do
       allow(Sidekiq).to receive(:redis).and_raise(StandardError)

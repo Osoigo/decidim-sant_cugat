@@ -18,7 +18,13 @@
 # comparten el script y los workers, y por eso se interpone en el propio
 # trabajo de entrega.
 #
-# Caduca sola a las 12 horas: si algo deja la bandera puesta, el correo se
+# Es una cuenta y no una bandera porque la limpieza se lanza en varios
+# procesos a la vez, repartidos por rangos de id. Con una bandera, el primero
+# en terminar reactivaría el correo mientras los demás siguen bloqueando
+# cuentas. Cada proceso suma al entrar y resta al salir; el correo sigue
+# callado mientras quede alguno.
+#
+# Caduca sola a las 12 horas: si un proceso muere sin restar, el correo se
 # recupera sin intervención en lugar de quedarse mudo para siempre.
 class CleanupMailSwitch
   CLAVE = "limpieza:correo_silenciado"
@@ -26,19 +32,31 @@ class CleanupMailSwitch
 
   class << self
     def silenciado?
-      redis { |r| r.get(CLAVE).present? }
-    rescue StandardError
-      false
+      procesos_silenciando.positive?
     end
 
+    # Devuelve cuántos procesos están silenciando tras entrar este.
     def silenciar!
-      redis { |r| r.set(CLAVE, Time.current.iso8601, ex: CADUCIDAD) }
-      true
+      redis do |r|
+        cuantos = r.incr(CLAVE)
+        r.expire(CLAVE, CADUCIDAD)
+        cuantos
+      end
     end
 
+    # Devuelve cuántos quedan silenciando tras salir este.
     def reactivar!
-      redis { |r| r.del(CLAVE) }
-      true
+      redis do |r|
+        quedan = r.decr(CLAVE)
+        r.del(CLAVE) if quedan <= 0
+        [quedan, 0].max
+      end
+    end
+
+    def procesos_silenciando
+      redis { |r| r.get(CLAVE).to_i }
+    rescue StandardError
+      0
     end
 
     private
