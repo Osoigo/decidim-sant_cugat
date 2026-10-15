@@ -31,6 +31,10 @@
 # Antes de hacer nada comprueba que el bucket de ActiveStorage no es el de
 # producción cuando el entorno no lo es, porque borrar una cuenta purga su
 # avatar y las credenciales de AWS son las mismas en los dos servidores.
+#
+# Durante la ejecución silencia el correo en todos los procesos con
+# CleanupMailSwitch, porque ocultar el contenido de una cuenta bloqueada genera
+# un aviso por cada contenido y esos los manda Sidekiq, fuera de este proceso.
 
 require "set"
 
@@ -199,18 +203,30 @@ registro = File.open(REGISTRO, "a")
 registro.sync = true
 log "Registro en #{REGISTRO}"
 
+# El parche de BlockUserMailer de arriba solo vale en este proceso. Los avisos
+# de contenido ocultado los genera Sidekiq, así que hace falta una bandera que
+# vean también los workers. Se reactiva pase lo que pase, y además caduca sola.
+CleanupMailSwitch.silenciar!
+at_exit do
+  CleanupMailSwitch.reactivar!
+  warn("Correo reactivado (#{CleanupMailSwitch.silenciado? ? 'SIGUE SILENCIADO, revísalo' : 'comprobado'}).")
+end
+log "Correo silenciado en todos los procesos mientras dure la limpieza."
+
 def anotar(registro, id, accion, detalle = nil)
   registro.puts([id, accion, detalle].compact.join(" "))
 end
 
 borradas = 0
 falladas = 0
+reparados = 0
 ids = LIMITE ? a_borrar.first(LIMITE) : a_borrar
 log "Borrando #{ids.size} cuentas..."
 ids.each_slice(500) do |lote|
   Decidim::User.where(id: lote).find_each do |user|
     next if tratadas.include?(user.id)
 
+    reparados += 1 if AccountNicknameRepair.call(user)
     formulario = Decidim::DeleteAccountForm.from_params(delete_reason: MOTIVO).with_context(current_user: user)
     Decidim::DestroyAccount.call(formulario) do
       on(:ok) do
@@ -236,6 +252,7 @@ ids.each_slice(200) do |lote|
   Decidim::User.where(id: lote).find_each do |user|
     next if tratadas.include?(user.id)
 
+    reparados += 1 if AccountNicknameRepair.call(user)
     formulario = Decidim::Admin::BlockUserForm.from_params(user_id: user.id, justification: MOTIVO, hide: true)
                                               .with_context(current_user: administradora, current_organization: user.organization)
     Decidim::Admin::BlockUser.call(formulario) do
@@ -258,6 +275,7 @@ end
 registro.close
 puts
 log "Terminado: #{borradas} borradas, #{bloqueadas} bloqueadas, #{falladas} con error."
+log "Apodos antiguos reparados para poder tratarlas: #{reparados}."
 log "Quedan #{Decidim::User.where(deleted_at: nil).count} cuentas sin borrar en la base."
 log "La ocultación del contenido de las bloqueadas la hace Decidim en segundo plano: revisa que Sidekiq procese la cola."
 nil
