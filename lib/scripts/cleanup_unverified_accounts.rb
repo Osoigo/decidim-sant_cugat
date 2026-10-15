@@ -236,6 +236,28 @@ at_exit do
 end
 abort("ALTO: el correo no está apagado. Revisa CleanupMailSwitch antes de seguir.") unless CleanupMailSwitch.silenciado?
 
+# El apagón vive en el código, así que vale lo que valga el código que corre
+# el worker: los avisos de la ocultación los entrega Sidekiq, no este proceso.
+# Si Sidekiq arrancó antes que este release sigue con el anterior, donde el
+# correo salía. Es el fallo clásico de desplegar y no reiniciar el worker.
+require "sidekiq/api"
+nacimiento = begin
+  File.mtime(Rails.root.join("REVISION"))
+rescue StandardError
+  nil
+end
+workers = Sidekiq::ProcessSet.new.to_a
+if workers.empty?
+  warn("AVISO: no hay ningún worker de Sidekiq vivo. Lo que se encole esperará en la cola y se entregaría al volver a master.")
+elsif nacimiento
+  antiguos = workers.select { |w| Time.zone.at(w["started_at"]) < nacimiento }
+  if antiguos.any?
+    abort(
+      "ALTO: #{antiguos.size} de #{workers.size} workers arrancaron antes de este release "       "(#{antiguos.map { |w| Time.zone.at(w['started_at']).strftime('%d/%m %H:%M') }.join(', ')} "       "frente a #{nacimiento.strftime('%d/%m %H:%M')}), así que están corriendo el código anterior "       "y entregarían los avisos de la ocultación. Reinicia Sidekiq antes de seguir."
+    )
+  end
+  log "Workers comprobados: #{workers.size} corriendo código de este release o posterior."
+end
 log "Correo apagado por código mientras esta rama esté desplegada."
 
 # Purgado de avatares por lotes. ActiveStorage borra de uno en uno, 88 ms por
