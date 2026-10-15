@@ -35,6 +35,10 @@
 # Durante la ejecución silencia el correo en todos los procesos con
 # CleanupMailSwitch, porque ocultar el contenido de una cuenta bloqueada genera
 # un aviso por cada contenido y esos los manda Sidekiq, fuera de este proceso.
+#
+# También agrupa los borrados en S3 con BatchedStoragePurge, porque purgar los
+# avatares de uno en uno son horas de espera. Las claves enviadas quedan
+# anotadas en un fichero junto al registro.
 
 require "set"
 
@@ -213,6 +217,27 @@ at_exit do
 end
 log "Correo silenciado en todos los procesos mientras dure la limpieza."
 
+# Purgado de avatares por lotes. ActiveStorage borra de uno en uno, 88 ms por
+# avatar medidos contra S3, y en producción hay 104.218 que purgar. La
+# envoltura acumula las claves y las manda de mil en mil. Blob#service resuelve
+# por el registro, así que hay que sustituir la entrada ahí, no solo el
+# servicio por defecto.
+NOMBRE_SERVICIO = Rails.application.config.active_storage.service.to_sym
+CLAVES = REGISTRO.sub(/\.log\z/, "") + "_claves.log"
+SERVICIO_REAL = ActiveStorage::Blob.service
+PURGA = BatchedStoragePurge.new(SERVICIO_REAL, registro: CLAVES)
+MAPA_SERVICIOS = ActiveStorage::Blob.services.send(:services)
+MAPA_SERVICIOS[NOMBRE_SERVICIO] = PURGA
+ActiveStorage::Blob.service = PURGA
+
+at_exit do
+  PURGA.vaciar
+  MAPA_SERVICIOS[NOMBRE_SERVICIO] = SERVICIO_REAL
+  ActiveStorage::Blob.service = SERVICIO_REAL
+  warn("Purgado en S3: #{PURGA.claves_borradas} claves en #{PURGA.peticiones} peticiones. Quedan #{PURGA.pendientes} sin enviar.")
+end
+log "Purgado de avatares agrupado; claves anotadas en #{CLAVES}"
+
 def anotar(registro, id, accion, detalle = nil)
   registro.puts([id, accion, detalle].compact.join(" "))
 end
@@ -242,7 +267,8 @@ ids.each_slice(500) do |lote|
     falladas += 1
     anotar(registro, user.id, "excepcion_borrado", e.class.name)
   end
-  log "  #{borradas} borradas, #{falladas} con error"
+  PURGA.vaciar
+  log "  #{borradas} borradas, #{falladas} con error, #{PURGA.claves_borradas} ficheros purgados"
 end
 
 bloqueadas = 0
@@ -269,6 +295,7 @@ ids.each_slice(200) do |lote|
     falladas += 1
     anotar(registro, user.id, "excepcion_bloqueo", e.class.name)
   end
+  PURGA.vaciar
   log "  #{bloqueadas} bloqueadas, #{falladas} con error"
 end
 
@@ -276,6 +303,7 @@ registro.close
 puts
 log "Terminado: #{borradas} borradas, #{bloqueadas} bloqueadas, #{falladas} con error."
 log "Apodos antiguos reparados para poder tratarlas: #{reparados}."
+log "Ficheros purgados en S3: #{PURGA.claves_borradas} en #{PURGA.peticiones} peticiones, #{PURGA.prefijos_resueltos} prefijos listados."
 log "Quedan #{Decidim::User.where(deleted_at: nil).count} cuentas sin borrar en la base."
 log "La ocultación del contenido de las bloqueadas la hace Decidim en segundo plano: revisa que Sidekiq procese la cola."
 nil
