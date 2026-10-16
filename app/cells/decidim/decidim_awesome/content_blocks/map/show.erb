@@ -1,0 +1,1161 @@
+<section class="map-block home__section">
+  <%= content_tag("h3", section_title) if section_title.present? %>
+
+  <% show_accountability_results = model.settings.respond_to?(:show_accountability_results) && model.settings.show_accountability_results %>
+
+  <%= awesome_map_for global_map_components do %>
+      <%= render partial: "decidim/decidim_awesome/map_component/map/map_template.html", locals: { taxonomies: all_taxonomies, map_height: model.settings.map_height } %>
+  <% end %>
+</section>
+
+<% if show_accountability_results %>
+<script id="marker-result-popup" type="text/x-jsrender">
+  <div class="space-y-6">
+    <div class="card__list">
+      <div class="card__list-content">
+        <a href="{{>url}}" target="result">
+          <h3 class="h4 card__list-title">{{:titleText}}</h3>
+          <div class="card__list-metadata">
+            <span class="label muted"><%= t("activerecord.models.decidim/accountability/result", count: 1) %></span>
+          </div>
+          {{if address}}
+            <div class="text-sm">{{>address}}</div>
+          {{/if}}
+        </a>
+        {{if descriptionText}}
+          <div class="description">
+            {{:descriptionText}}
+          </div>
+        {{/if}}
+      </div>
+    </div>
+  </div>
+</script>
+<% end %>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const districtCouncilLayerUrl = "/geo/consells-de-barri.geojson";
+    let districtCouncilBoundariesLayer = null;
+    let districtCouncilFeatures = [];
+    let districtCouncilBoundariesLoaded = false;
+    let initialViewportAdjusted = false;
+    const resultMarkers = [];
+    const districtCouncilGroups = {};
+    const budgetYearGroups = {};
+    const districtCouncilColors = {
+      "Centre": "#fec544",
+      "Les Planes": "#5bb357",
+      "Mira-sol": "#33bad3",
+      "Mira Sol": "#33bad3",
+      "La Floresta": "#ed3596",
+      "Volpelleres": "#f47721"
+    };
+    const defaultDistrictCouncilColor = "#165b69";
+    const configuredMapZoom = <%= model.settings.map_zoom.present? ? model.settings.map_zoom.to_i : "null" %>;
+    const showAccountabilityResults = <%= show_accountability_results ? "true" : "false" %>;
+    const components = <%= show_accountability_results ? accountability_map_components.map { |component|
+      {
+        id: component.id,
+        url: Decidim::EngineRouter.main_proxy(component).root_path
+      }
+    }.to_json.html_safe : [].to_json.html_safe %>;
+
+    const query = `query ($id: ID!, $after: String!) {
+      component(id: $id) {
+        ... on Accountability {
+          results(first: 50, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            edges {
+              node {
+                id
+                url
+                address
+                coordinates {
+                  latitude
+                  longitude
+                }
+                title {
+                  translations {
+                    text
+                    locale
+                  }
+                }
+                description {
+                  translations {
+                    text
+                    locale
+                  }
+                }
+                taxonomies {
+                  id
+                  name {
+                    translations {
+                      text
+                      locale
+                    }
+                  }
+                  parent {
+                    id
+                    name {
+                      translations {
+                        text
+                        locale
+                      }
+                    }
+                    parent {
+                      id
+                      name {
+                        translations {
+                          text
+                          locale
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }`;
+
+    const htmlLang = document.documentElement.getAttribute("lang");
+    const districtCouncilFallbackName = htmlLang === "ca" ? "Sense consell" : "Without district council";
+  const budgetYearsTitle = "Pressupostos";
+  const budgetYearFallbackName = htmlLang === "ca" ? "Sense pressupost" : "Without budget";
+  const budgetYearNamePattern = /\b(?:pressupost(?:os)?|presupuesto(?:s)?|budget(?:s)?)\b.*\b(20\d{2})\b/i;
+    const showMapFiltersLabel = htmlLang === "ca" ? "Mostrar filtres del mapa" : "Show map filters";
+    const hideMapFiltersLabel = htmlLang === "ca" ? "Ocultar filtres del mapa" : "Hide map filters";
+
+    const hideLoadingSpinner = (awesomeMap) => {
+      if (awesomeMap.controls && awesomeMap.controls.loading) {
+        awesomeMap.controls.loading.style.display = "none";
+      }
+    };
+
+    const slugifyFilterValue = (value) => {
+      return String(value || "unknown").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "unknown";
+    };
+
+    const districtCouncilColorFor = (feature) => {
+      const name = feature?.properties?.name;
+      return districtCouncilColors[name] || defaultDistrictCouncilColor;
+    };
+
+    const districtCouncilIdFor = (name) => {
+      return `district-council-${slugifyFilterValue(name)}`;
+    };
+
+    const budgetYearIdFor = (name) => {
+      return `budget-year-${slugifyFilterValue(name)}`;
+    };
+
+    const districtCouncilGroupData = (name, color = defaultDistrictCouncilColor) => {
+      if (!districtCouncilGroups[name]) {
+        districtCouncilGroups[name] = {
+          id: districtCouncilIdFor(name),
+          name,
+          color,
+          expanded: true,
+          markers: []
+        };
+      }
+
+      if (color) districtCouncilGroups[name].color = color;
+
+      return districtCouncilGroups[name];
+    };
+
+    const budgetYearGroupData = (name) => {
+      if (!budgetYearGroups[name]) {
+        budgetYearGroups[name] = {
+          id: budgetYearIdFor(name),
+          name,
+          markers: []
+        };
+      }
+
+      return budgetYearGroups[name];
+    };
+
+    const ringContainsCoordinates = (ring, longitude, latitude) => {
+      let isInside = false;
+
+      for (let currentIndex = 0, previousIndex = ring.length - 1; currentIndex < ring.length; previousIndex = currentIndex++) {
+        const [currentLongitude, currentLatitude] = ring[currentIndex];
+        const [previousLongitude, previousLatitude] = ring[previousIndex];
+        const intersects = ((currentLatitude > latitude) !== (previousLatitude > latitude)) &&
+          (longitude < ((previousLongitude - currentLongitude) * (latitude - currentLatitude) / ((previousLatitude - currentLatitude) || Number.EPSILON)) + currentLongitude);
+
+        if (intersects) isInside = !isInside;
+      }
+
+      return isInside;
+    };
+
+    const polygonContainsCoordinates = (polygonCoordinates, longitude, latitude) => {
+      if (!polygonCoordinates.length || !ringContainsCoordinates(polygonCoordinates[0], longitude, latitude)) return false;
+
+      for (let holeIndex = 1; holeIndex < polygonCoordinates.length; holeIndex += 1) {
+        if (ringContainsCoordinates(polygonCoordinates[holeIndex], longitude, latitude)) return false;
+      }
+
+      return true;
+    };
+
+    const featureContainsCoordinates = (feature, longitude, latitude) => {
+      const geometry = feature?.geometry;
+      if (!geometry || longitude == null || latitude == null) return false;
+
+      if (geometry.type === "Polygon") {
+        return polygonContainsCoordinates(geometry.coordinates || [], longitude, latitude);
+      }
+
+      if (geometry.type === "MultiPolygon") {
+        return (geometry.coordinates || []).some((polygonCoordinates) => polygonContainsCoordinates(polygonCoordinates, longitude, latitude));
+      }
+
+      return false;
+    };
+
+    const districtCouncilFeatureAtCoordinates = (latitude, longitude) => {
+      return districtCouncilFeatures.find((item) => featureContainsCoordinates(item, longitude, latitude)) || null;
+    };
+
+    const districtCouncilColorAtCoordinates = (latitude, longitude) => {
+      const feature = districtCouncilFeatureAtCoordinates(latitude, longitude);
+      return feature ? districtCouncilColorFor(feature) : null;
+    };
+
+    const districtCouncilDataAtCoordinates = (latitude, longitude) => {
+      const feature = districtCouncilFeatureAtCoordinates(latitude, longitude);
+
+      if (!feature) {
+        return {
+          name: districtCouncilFallbackName,
+          color: defaultDistrictCouncilColor
+        };
+      }
+
+      return {
+        name: feature?.properties?.name || districtCouncilFallbackName,
+        color: districtCouncilColorFor(feature)
+      };
+    };
+
+    const fallbackResultColor = (awesomeMap, node) => {
+      const primaryTaxonomy = node.taxonomies && node.taxonomies[0];
+      if (!primaryTaxonomy) return defaultDistrictCouncilColor;
+
+      return awesomeMap.getTaxonomy(primaryTaxonomy).color;
+    };
+
+    const resultMarkerColor = (awesomeMap, node) => {
+      return districtCouncilColorAtCoordinates(node.coordinates?.latitude, node.coordinates?.longitude) || fallbackResultColor(awesomeMap, node);
+    };
+
+    const districtCouncilControlsContainer = () => {
+      const section = document.querySelector("#awesome-map .leaflet-control-layers-list");
+      if (!section) return null;
+
+      let control = section.querySelector("#awesome_map-district-councils-control");
+      if (!control) {
+        section.insertAdjacentHTML("beforeend", `
+          <div id="awesome_map-district-councils-control" class="active">
+            <b class="awesome_map-district-councils-title-control awesome_map-title-control" data-target-control="awesome_map-district-councils-control">Consells de barri</b>
+            <div class="district-councils-container"></div>
+          </div>
+        `);
+        control = section.querySelector("#awesome_map-district-councils-control");
+      }
+
+      return control.querySelector(".district-councils-container");
+    };
+
+    const budgetYearControlsContainer = () => {
+      const section = document.querySelector("#awesome-map .leaflet-control-layers-list");
+      if (!section) return null;
+
+      let control = section.querySelector("#awesome_map-budget-years-control");
+      if (!control) {
+        section.insertAdjacentHTML("beforeend", `
+          <div id="awesome_map-budget-years-control" class="active">
+            <b class="awesome_map-budget-years-title-control awesome_map-title-control" data-target-control="awesome_map-budget-years-control">${budgetYearsTitle}</b>
+            <div class="budget-years-container"></div>
+          </div>
+        `);
+        control = section.querySelector("#awesome_map-budget-years-control");
+      }
+
+      return control.querySelector(".budget-years-container");
+    };
+
+    const adjustMapControlHeights = () => {
+      const mapContainer = document.querySelector("#awesome-map");
+      const panel = document.querySelector("#awesome-map .leaflet-control-layers");
+      if (!mapContainer || !panel) return;
+
+      const mapRect = mapContainer.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const panelPaddingBottom = 16;
+      const panelAvailableHeight = Math.max(220, Math.floor(mapRect.bottom - panelRect.top - panelPaddingBottom));
+
+      panel.style.maxHeight = `${panelAvailableHeight}px`;
+    };
+
+    const moveZoomControlsToRight = () => {
+      const zoomControl = document.querySelector("#awesome-map .leaflet-control-zoom");
+      const rightTopControls = document.querySelector("#awesome-map .leaflet-top.leaflet-right");
+      if (!zoomControl || !rightTopControls || rightTopControls.contains(zoomControl)) return;
+
+      rightTopControls.prepend(zoomControl);
+    };
+
+    const updateMapFiltersToggleState = (toggleButton, filtersPanel) => {
+      if (!toggleButton || !filtersPanel) return;
+
+      const isHidden = filtersPanel.classList.contains("awesome_map-filters-hidden");
+      toggleButton.setAttribute("aria-pressed", isHidden ? "false" : "true");
+      toggleButton.setAttribute("aria-label", isHidden ? showMapFiltersLabel : hideMapFiltersLabel);
+      toggleButton.setAttribute("title", isHidden ? showMapFiltersLabel : hideMapFiltersLabel);
+      toggleButton.classList.toggle("active", !isHidden);
+    };
+
+    const ensureMapFiltersToggle = () => {
+      const rightTopControls = document.querySelector("#awesome-map .leaflet-top.leaflet-right");
+      const filtersPanel = document.querySelector("#awesome-map .leaflet-control-layers");
+      if (!rightTopControls || !filtersPanel) return;
+
+      let filtersToggle = document.querySelector("#awesome-map .awesome_map-filters-toggle");
+      if (!filtersToggle) {
+        rightTopControls.insertAdjacentHTML("beforeend", `
+          <div class="leaflet-control leaflet-bar awesome_map-filters-toggle-control">
+            <button type="button" class="awesome_map-filters-toggle" aria-pressed="true" aria-controls="awesome-map-filters-panel">
+              <span class="sr-only">${hideMapFiltersLabel}</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M3 5h18l-7 8v5l-4 2v-7L3 5z" fill="currentColor"></path>
+              </svg>
+            </button>
+          </div>
+        `);
+        filtersToggle = document.querySelector("#awesome-map .awesome_map-filters-toggle");
+      }
+
+      filtersPanel.id = "awesome-map-filters-panel";
+      updateMapFiltersToggleState(filtersToggle, filtersPanel);
+    };
+
+    const removeProposalFilters = () => {
+      document.querySelectorAll(".awesome_map-component[data-layer='proposals']").forEach((label) => {
+        const container = label.closest("label");
+        if (container) container.remove();
+      });
+    };
+
+    const watchLayerControls = () => {
+      const section = document.querySelector("#awesome-map .leaflet-control-layers-list");
+      if (!section) return;
+
+      removeProposalFilters();
+      window.requestAnimationFrame(adjustMapControlHeights);
+
+      const observer = new MutationObserver(() => {
+        removeProposalFilters();
+        window.requestAnimationFrame(adjustMapControlHeights);
+      });
+
+      observer.observe(section, { childList: true, subtree: true });
+    };
+
+    const containMapControlScroll = () => {
+      const scrollContainers = document.querySelectorAll("#awesome-map .leaflet-control-layers");
+
+      scrollContainers.forEach((container) => {
+        if (!container || container.dataset.scrollBound === "true") return;
+
+        container.dataset.scrollBound = "true";
+
+        ["wheel", "touchmove"].forEach((eventName) => {
+          container.addEventListener(eventName, (event) => {
+            event.stopPropagation();
+          }, { passive: true });
+        });
+      });
+    };
+
+    const compareFilterLabels = (leftValue, rightValue) => {
+      return String(leftValue || "").localeCompare(String(rightValue || ""), htmlLang || "ca", {
+        numeric: true,
+        sensitivity: "base"
+      });
+    };
+
+    const budgetYearFromLabel = (value) => {
+      const match = String(value || "").match(/(20\d{2})/);
+      return match ? Number.parseInt(match[1], 10) : null;
+    };
+
+    const sortFilterElements = (container, selector, getLabel, compareValues = compareFilterLabels) => {
+      if (!container) return;
+
+      Array.from(container.querySelectorAll(selector))
+        .sort((leftElement, rightElement) => compareValues(getLabel(leftElement), getLabel(rightElement)))
+        .forEach((element) => container.appendChild(element));
+    };
+
+    const compareBudgetYearLabels = (leftValue, rightValue) => {
+      const leftYear = budgetYearFromLabel(leftValue);
+      const rightYear = budgetYearFromLabel(rightValue);
+
+      if (leftYear != null && rightYear != null && leftYear !== rightYear) {
+        return rightYear - leftYear;
+      }
+
+      return compareFilterLabels(leftValue, rightValue);
+    };
+
+    const markerControlChecked = (entry) => {
+      return entry.enabled && entry.budgetYearEnabled;
+    };
+
+    const updateDistrictCouncilGroupState = (group) => {
+      const groupContainer = document.getElementById(group.id);
+      if (!groupContainer) return;
+
+      const groupInput = groupContainer.querySelector(".awesome_map-district-council-selector");
+      if (!groupInput) return;
+
+      const enabledMarkers = group.markers.filter((entry) => markerControlChecked(entry));
+      groupInput.indeterminate = enabledMarkers.length > 0 && enabledMarkers.length < group.markers.length;
+      groupInput.checked = enabledMarkers.length > 0;
+    };
+
+    const updateBudgetYearGroupState = (group) => {
+      const groupContainer = document.getElementById(group.id);
+      if (!groupContainer) return;
+
+      const groupInput = groupContainer.querySelector(".awesome_map-budget-year-selector");
+      if (!groupInput) return;
+
+      const enabledMarkers = group.markers.filter((entry) => markerControlChecked(entry));
+      groupInput.indeterminate = enabledMarkers.length > 0 && enabledMarkers.length < group.markers.length;
+      groupInput.checked = enabledMarkers.length > 0;
+    };
+
+    const syncMarkerControlInputs = (entry) => {
+      const checked = markerControlChecked(entry);
+
+      document.querySelectorAll(`[data-marker-id="${entry.id}"] input[type='checkbox']`).forEach((input) => {
+        input.checked = checked;
+      });
+    };
+
+    const syncMarkerControlState = (entry) => {
+      syncMarkerControlInputs(entry);
+
+      const districtGroup = districtCouncilGroups[entry.districtCouncilName];
+      if (districtGroup) updateDistrictCouncilGroupState(districtGroup);
+
+      const budgetGroup = budgetYearGroups[entry.budgetYearName];
+      if (budgetGroup) updateBudgetYearGroupState(budgetGroup);
+    };
+
+    const syncMarkerControlStates = (entries) => {
+      const districtGroupsToUpdate = new Set();
+      const budgetGroupsToUpdate = new Set();
+
+      entries.forEach((entry) => {
+        syncMarkerControlInputs(entry);
+        if (entry.districtCouncilName) districtGroupsToUpdate.add(entry.districtCouncilName);
+        if (entry.budgetYearName) budgetGroupsToUpdate.add(entry.budgetYearName);
+      });
+
+      districtGroupsToUpdate.forEach((name) => {
+        const group = districtCouncilGroups[name];
+        if (group) updateDistrictCouncilGroupState(group);
+      });
+
+      budgetGroupsToUpdate.forEach((name) => {
+        const group = budgetYearGroups[name];
+        if (group) updateBudgetYearGroupState(group);
+      });
+    };
+
+    const syncResultMarkerVisibility = (awesomeMap, entry) => {
+      const shouldBeVisible = markerControlChecked(entry);
+
+      if (shouldBeVisible) {
+        awesomeMap.cluster.addLayer(entry.marker);
+      } else {
+        awesomeMap.cluster.removeLayer(entry.marker);
+      }
+    };
+
+    const registerDistrictCouncilMarkerControl = (group, entry) => {
+      const container = districtCouncilControlsContainer();
+      if (!container) return;
+
+      let groupContainer = document.getElementById(group.id);
+      if (!groupContainer) {
+        container.insertAdjacentHTML("beforeend", `
+          <div id="${group.id}" class="awesome_map-district-council-group active" data-group-id="${group.id}">
+            <div class="awesome_map-filter-group-header">
+              <button type="button" class="awesome_map-group-toggle" data-group-id="${group.id}" aria-expanded="true" aria-label="Toggle ${group.name}">
+                <span class="awesome_map-group-toggle-icon">▾</span>
+              </button>
+              <label class="awesome_map-district-council-root" data-district-council="${group.name}">
+                <input type="checkbox" class="awesome_map-district-council-selector" checked>
+                <span class="awesome_map-district-council-swatch" style="background-color: ${group.color}"></span>
+                <span>${group.name}</span>
+              </label>
+            </div>
+            <div class="awesome_map-district-council-markers"></div>
+          </div>
+        `);
+        groupContainer = document.getElementById(group.id);
+      }
+
+      const markersContainer = groupContainer.querySelector(".awesome_map-district-council-markers");
+      if (!markersContainer.querySelector(`[data-marker-id="${entry.id}"]`)) {
+        markersContainer.insertAdjacentHTML("beforeend", `
+          <label class="awesome_map-district-council-marker" data-marker-id="${entry.id}" data-group-id="${group.id}">
+            <input type="checkbox" class="awesome_map-district-council-marker-selector" checked>
+            <span>${entry.node.titleText}</span>
+          </label>
+        `);
+      }
+
+      sortFilterElements(container, ".awesome_map-district-council-group", (element) => element.querySelector(".awesome_map-district-council-root span:last-child")?.textContent);
+      sortFilterElements(markersContainer, ".awesome_map-district-council-marker", (element) => element.querySelector("span:last-child")?.textContent);
+
+      updateDistrictCouncilGroupState(group);
+    };
+
+    const registerBudgetYearMarkerControl = (group, entry) => {
+      const container = budgetYearControlsContainer();
+      if (!container) return;
+
+      let groupContainer = document.getElementById(group.id);
+      if (!groupContainer) {
+        container.insertAdjacentHTML("beforeend", `
+          <div id="${group.id}" class="awesome_map-budget-year-group" data-group-id="${group.id}">
+            <div class="awesome_map-filter-group-header">
+              <button type="button" class="awesome_map-group-toggle" data-group-id="${group.id}" aria-expanded="false" aria-label="Toggle ${group.name}">
+                <span class="awesome_map-group-toggle-icon">▾</span>
+              </button>
+              <label class="awesome_map-budget-year-root" data-budget-year="${group.name}">
+                <input type="checkbox" class="awesome_map-budget-year-selector" checked>
+                <span>${group.name}</span>
+              </label>
+            </div>
+            <div class="awesome_map-budget-year-markers"></div>
+          </div>
+        `);
+        groupContainer = document.getElementById(group.id);
+      }
+
+      const markersContainer = groupContainer.querySelector(".awesome_map-budget-year-markers");
+      if (!markersContainer.querySelector(`[data-marker-id="${entry.id}"]`)) {
+        markersContainer.insertAdjacentHTML("beforeend", `
+          <label class="awesome_map-budget-year-marker" data-marker-id="${entry.id}" data-group-id="${group.id}">
+            <input type="checkbox" class="awesome_map-budget-year-marker-selector" checked>
+            <span>${entry.node.titleText}</span>
+          </label>
+        `);
+      }
+
+      sortFilterElements(container, ".awesome_map-budget-year-group", (element) => element.querySelector(".awesome_map-budget-year-root span:last-child")?.textContent, compareBudgetYearLabels);
+      sortFilterElements(markersContainer, ".awesome_map-budget-year-marker", (element) => element.querySelector("span:last-child")?.textContent);
+
+      updateBudgetYearGroupState(group);
+    };
+
+    const assignBudgetYearToMarker = (entry) => {
+      const budgetYear = budgetYearDataForNode(entry.node);
+      entry.budgetYearName = budgetYear.name;
+
+      const group = budgetYearGroupData(budgetYear.name);
+      if (!group.markers.includes(entry)) {
+        group.markers.push(entry);
+      }
+
+      if (!entry.budgetYearControlRegistered) {
+        registerBudgetYearMarkerControl(group, entry);
+        entry.budgetYearControlRegistered = true;
+      }
+
+      updateBudgetYearGroupState(group);
+    };
+
+    const assignDistrictCouncilToMarker = (awesomeMap, entry) => {
+      const districtCouncil = districtCouncilDataAtCoordinates(entry.node.coordinates?.latitude, entry.node.coordinates?.longitude);
+      entry.districtCouncilName = districtCouncil.name;
+      entry.districtCouncilColor = districtCouncil.color;
+
+      const group = districtCouncilGroupData(districtCouncil.name, districtCouncil.color);
+      if (!group.markers.includes(entry)) {
+        group.markers.push(entry);
+      }
+
+      if (!entry.controlRegistered) {
+        registerDistrictCouncilMarkerControl(group, entry);
+        entry.controlRegistered = true;
+      }
+
+      entry.marker.setIcon(createResultIcon(awesomeMap, entry.node));
+      updateDistrictCouncilGroupState(group);
+    };
+
+    const syncAllDistrictCouncilMarkers = (awesomeMap) => {
+      resultMarkers.forEach((entry) => {
+        assignDistrictCouncilToMarker(awesomeMap, entry);
+        syncResultMarkerVisibility(awesomeMap, entry);
+      });
+    };
+
+    const fitMapToVisibleData = (awesomeMap) => {
+      let bounds = districtCouncilBoundariesLayer ? districtCouncilBoundariesLayer.getBounds() : null;
+
+      if ((!bounds || !bounds.isValid()) && awesomeMap.cluster && awesomeMap.cluster.getLayers().length > 0) {
+        const clusterBounds = awesomeMap.cluster.getBounds();
+        bounds = clusterBounds;
+      }
+
+      if (bounds && bounds.isValid()) {
+        window.requestAnimationFrame(() => {
+          awesomeMap.map.invalidateSize(false);
+          awesomeMap.map.fitBounds(bounds, { padding: [24, 24], animate: false });
+
+          if (Number.isInteger(configuredMapZoom) && configuredMapZoom > 0) {
+            awesomeMap.map.setZoom(configuredMapZoom);
+          }
+        });
+      }
+    };
+
+    const updateInitialViewport = (awesomeMap) => {
+      if (initialViewportAdjusted) return;
+      if (!districtCouncilBoundariesLoaded) return;
+      if (Array.isArray(awesomeMap.loading) && awesomeMap.loading.length > 0) return;
+
+      fitMapToVisibleData(awesomeMap);
+      initialViewportAdjusted = true;
+    };
+
+    const addDistrictCouncilBoundaries = (awesomeMap) => {
+      fetch(districtCouncilLayerUrl)
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.json();
+        })
+        .then((featureCollection) => {
+          if (!featureCollection || !Array.isArray(featureCollection.features) || !featureCollection.features.length) return;
+
+          districtCouncilFeatures = featureCollection.features;
+
+          const paneName = "district-council-boundaries";
+          let pane = awesomeMap.map.getPane(paneName);
+
+          if (!pane) {
+            pane = awesomeMap.map.createPane(paneName);
+            pane.style.zIndex = 350;
+            pane.style.pointerEvents = "none";
+          }
+
+          districtCouncilBoundariesLayer = L.geoJSON(featureCollection, {
+            pane: paneName,
+            style: (feature) => {
+              const color = districtCouncilColorFor(feature);
+
+              return {
+                color,
+                weight: 2,
+                opacity: 0.95,
+                fillColor: color,
+                fillOpacity: 0.2,
+                dashArray: "6 4"
+              };
+            }
+          });
+
+          districtCouncilBoundariesLayer.addTo(awesomeMap.map);
+          districtCouncilBoundariesLayer.bringToBack();
+          districtCouncilBoundariesLoaded = true;
+          syncAllDistrictCouncilMarkers(awesomeMap);
+          hideLoadingSpinner(awesomeMap);
+          updateInitialViewport(awesomeMap);
+        })
+        .catch((error) => {
+          districtCouncilBoundariesLoaded = true;
+          updateInitialViewport(awesomeMap);
+          console.error("Failed to load district council boundaries", error);
+        });
+    };
+
+    const findTranslation = (field) => {
+      const translations = field?.translations || [];
+      let fallback = "";
+
+      translations.forEach((translation) => {
+        if (!translation.text) return;
+        if (!fallback) fallback = translation.text;
+        if (translation.locale === htmlLang) fallback = translation.text;
+      });
+
+      return fallback;
+    };
+
+    const findTranslationByPreferredLocales = (field, preferredLocales = []) => {
+      const translations = field?.translations || [];
+      const fallback = findTranslation(field);
+
+      for (const locale of preferredLocales) {
+        const translation = translations.find((item) => item.locale === locale && item.text);
+        if (translation) return translation.text;
+      }
+
+      return fallback;
+    };
+
+    const budgetYearNameFromTaxonomy = (taxonomy) => {
+      const candidates = [taxonomy, taxonomy?.parent, taxonomy?.parent?.parent]
+        .map((item) => findTranslationByPreferredLocales(item?.name, ["ca", htmlLang]))
+        .filter(Boolean);
+
+      return candidates.find((name) => budgetYearNamePattern.test(name)) || null;
+    };
+
+    const budgetYearDataForNode = (node) => {
+      const taxonomies = Array.isArray(node.taxonomies) ? node.taxonomies : [];
+      const name = taxonomies.map((taxonomy) => budgetYearNameFromTaxonomy(taxonomy)).find(Boolean);
+
+      return {
+        name: name || budgetYearFallbackName
+      };
+    };
+
+    const createResultIcon = (awesomeMap, node) => {
+      const color = resultMarkerColor(awesomeMap, node);
+      const size = 36;
+
+      return L.divIcon({
+        html: `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}px" height="${size}px" class="text-secondary" style="color: ${color}"><path fill="none" d="M0 0h24v24H0z"/><path fill="currentColor" stroke="#000" stroke-width="0.9" d="M18.364 17.364L12 23.728l-6.364-6.364a9 9 0 1 1 12.728 0zM12 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0-2a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>`,
+        iconAnchor: [0.5 * size, size],
+        popupAnchor: [0, -0.5 * size]
+      });
+    };
+
+    const addResultMarker = (awesomeMap, component, node) => {
+      if (!node.coordinates || node.coordinates.latitude == null || node.coordinates.longitude == null) return;
+
+      node.titleText = findTranslation(node.title);
+      node.descriptionText = findTranslation(node.description);
+      node.url = node.url || `${component.url}/results/${node.id}`;
+
+      const marker = new L.Marker([node.coordinates.latitude, node.coordinates.longitude], {
+        keyboard: true,
+        title: node.titleText,
+        icon: createResultIcon(awesomeMap, node)
+      });
+
+      const entry = {
+        id: `result-marker-${node.id}`,
+        marker,
+        node,
+        enabled: true,
+        budgetYearEnabled: true,
+        controlRegistered: false,
+        budgetYearControlRegistered: false,
+        districtCouncilName: null,
+        districtCouncilColor: null,
+        budgetYearName: null
+      };
+
+      resultMarkers.push(entry);
+
+      marker.on("click", () => {
+        const dom = document.createElement("div");
+        dom.innerHTML = $.templates("#marker-result-popup").render(node);
+        const popup = L.popup({
+          maxwidth: 640,
+          minWidth: 500,
+          keepInView: true,
+          className: "map-info"
+        }).setLatLng(marker.getLatLng()).setContent(dom);
+        awesomeMap.map.addLayer(popup);
+      });
+
+      assignBudgetYearToMarker(entry);
+
+      if (districtCouncilFeatures.length) {
+        assignDistrictCouncilToMarker(awesomeMap, entry);
+      }
+
+      syncResultMarkerVisibility(awesomeMap, entry);
+    };
+
+    const startResultsLoading = (awesomeMap, component) => {
+      const loadingKey = `accountability-${component.id}`;
+      awesomeMap.loading = Array.isArray(awesomeMap.loading) ? awesomeMap.loading : [];
+
+      if (!awesomeMap.loading.includes(loadingKey)) {
+        awesomeMap.loading.push(loadingKey);
+      }
+
+      if (awesomeMap.controls && awesomeMap.controls.loading) {
+        awesomeMap.controls.loading.style.display = "none";
+      }
+
+      return loadingKey;
+    };
+
+    const finishResultsLoading = (awesomeMap, loadingKey) => {
+      if (!Array.isArray(awesomeMap.loading)) return;
+
+      const loadingIndex = awesomeMap.loading.indexOf(loadingKey);
+      if (loadingIndex >= 0) {
+        awesomeMap.loading.splice(loadingIndex, 1);
+      }
+
+      if (awesomeMap.loading.length === 0 && awesomeMap.controls && awesomeMap.controls.loading) {
+        awesomeMap.controls.loading.style.display = "none";
+      }
+
+      updateInitialViewport(awesomeMap);
+    };
+
+    const fetchResults = (awesomeMap, component, loadingKey, after = "") => {
+      $.ajax({
+        method: "POST",
+        url: "/api",
+        contentType: "application/json",
+        data: JSON.stringify({
+          query,
+          variables: { id: component.id, after }
+        })
+      }).done((response) => {
+        const collection = response?.data?.component?.results;
+        if (!collection) {
+          finishResultsLoading(awesomeMap, loadingKey);
+          return;
+        }
+
+        (collection.edges || []).forEach((edge) => {
+          if (!edge || !edge.node) return;
+          addResultMarker(awesomeMap, component, edge.node);
+        });
+
+        if (collection.pageInfo && collection.pageInfo.hasNextPage) {
+          fetchResults(awesomeMap, component, loadingKey, collection.pageInfo.endCursor || "");
+        } else {
+          finishResultsLoading(awesomeMap, loadingKey);
+        }
+      }).fail((error) => {
+        console.error("Failed to fetch accountability results", component.id, error);
+        finishResultsLoading(awesomeMap, loadingKey);
+      });
+    };
+
+    const hideDefaultLayers = (awesomeMap, attemptsLeft = 20) => {
+      const proposalsToggles = document.querySelectorAll(".awesome_map-component[data-layer='proposals']");
+      const meetingsToggles = document.querySelectorAll(".awesome_map-component[data-layer='meetings']");
+      const hasToggles = proposalsToggles.length > 0 || meetingsToggles.length > 0;
+
+      if (!hasToggles && attemptsLeft > 0) {
+        window.setTimeout(() => hideDefaultLayers(awesomeMap, attemptsLeft - 1), 150);
+        return;
+      }
+
+      removeProposalFilters();
+
+      ["proposals", "meetings"].forEach((layerName) => {
+        const labels = document.querySelectorAll(`.awesome_map-component[data-layer='${layerName}']`);
+        labels.forEach((label) => {
+          const checkbox = label.closest("label")?.querySelector("input[type='checkbox']");
+          if (checkbox) checkbox.checked = false;
+        });
+
+        const layer = awesomeMap.layers[layerName];
+        if (layer?.group) {
+          awesomeMap.map.removeLayer(layer.group);
+        }
+      });
+    };
+
+    const waitForAwesomeMap = () => {
+      if (!window.AwesomeMap || !window.AwesomeMap.map || !window.AwesomeMap.cluster) {
+        window.setTimeout(waitForAwesomeMap, 150);
+        return;
+      }
+
+      moveZoomControlsToRight();
+      ensureMapFiltersToggle();
+      hideLoadingSpinner(window.AwesomeMap);
+      watchLayerControls();
+      containMapControlScroll();
+      addDistrictCouncilBoundaries(window.AwesomeMap);
+      if (!showAccountabilityResults || !components.length) return;
+
+      hideDefaultLayers(window.AwesomeMap);
+      components.forEach((component) => {
+        const loadingKey = startResultsLoading(window.AwesomeMap, component);
+        fetchResults(window.AwesomeMap, component, loadingKey);
+      });
+    };
+
+    document.addEventListener("click", (event) => {
+      const filtersToggle = event.target.closest(".awesome_map-filters-toggle");
+      if (filtersToggle) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const filtersPanel = document.querySelector("#awesome-map .leaflet-control-layers");
+        if (!filtersPanel) return;
+
+        filtersPanel.classList.toggle("awesome_map-filters-hidden");
+        updateMapFiltersToggleState(filtersToggle, filtersPanel);
+        window.requestAnimationFrame(adjustMapControlHeights);
+        return;
+      }
+
+      const title = event.target.closest(".awesome_map-title-control[data-target-control]");
+      if (!title) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      const control = document.getElementById(title.dataset.targetControl);
+      if (control) control.classList.toggle("active");
+      window.requestAnimationFrame(adjustMapControlHeights);
+    });
+
+    document.addEventListener("click", (event) => {
+      const toggle = event.target.closest(".awesome_map-group-toggle");
+      if (!toggle) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const groupContainer = document.getElementById(toggle.dataset.groupId);
+      if (!groupContainer) return;
+
+      groupContainer.classList.toggle("active");
+      toggle.setAttribute("aria-expanded", groupContainer.classList.contains("active") ? "true" : "false");
+      window.requestAnimationFrame(adjustMapControlHeights);
+    });
+
+    document.addEventListener("change", (event) => {
+      const groupSelector = event.target.closest(".awesome_map-district-council-selector");
+      if (groupSelector) {
+        event.stopPropagation();
+        const nextChecked = groupSelector.checked;
+        const groupContainer = groupSelector.closest(".awesome_map-district-council-group");
+        const group = Object.values(districtCouncilGroups).find((item) => item.id === groupContainer?.dataset.groupId);
+        if (!group) return;
+
+        group.markers.forEach((entry) => {
+          entry.enabled = nextChecked;
+          syncResultMarkerVisibility(window.AwesomeMap, entry);
+        });
+
+        syncMarkerControlStates(group.markers);
+        return;
+      }
+
+      const budgetYearGroupSelector = event.target.closest(".awesome_map-budget-year-selector");
+      if (budgetYearGroupSelector) {
+        event.stopPropagation();
+        const nextChecked = budgetYearGroupSelector.checked;
+        const groupContainer = budgetYearGroupSelector.closest(".awesome_map-budget-year-group");
+        const group = Object.values(budgetYearGroups).find((item) => item.id === groupContainer?.dataset.groupId);
+        if (!group) return;
+
+        group.markers.forEach((entry) => {
+          entry.budgetYearEnabled = nextChecked;
+          syncResultMarkerVisibility(window.AwesomeMap, entry);
+        });
+
+        syncMarkerControlStates(group.markers);
+        return;
+      }
+
+      const markerSelector = event.target.closest(".awesome_map-district-council-marker-selector");
+      if (markerSelector) {
+        event.stopPropagation();
+        const markerLabel = markerSelector.closest(".awesome_map-district-council-marker");
+        const entry = resultMarkers.find((item) => item.id === markerLabel?.dataset.markerId);
+        if (!entry) return;
+
+        entry.enabled = markerSelector.checked;
+        syncResultMarkerVisibility(window.AwesomeMap, entry);
+        syncMarkerControlState(entry);
+        window.requestAnimationFrame(adjustMapControlHeights);
+        return;
+      }
+
+      const budgetYearMarkerSelector = event.target.closest(".awesome_map-budget-year-marker-selector");
+      if (!budgetYearMarkerSelector) return;
+
+      event.stopPropagation();
+      const markerLabel = budgetYearMarkerSelector.closest(".awesome_map-budget-year-marker");
+      const entry = resultMarkers.find((item) => item.id === markerLabel?.dataset.markerId);
+      if (!entry) return;
+
+      entry.budgetYearEnabled = budgetYearMarkerSelector.checked;
+      syncResultMarkerVisibility(window.AwesomeMap, entry);
+      syncMarkerControlState(entry);
+      window.requestAnimationFrame(adjustMapControlHeights);
+    });
+
+    window.addEventListener("resize", () => {
+      window.requestAnimationFrame(adjustMapControlHeights);
+    });
+
+    waitForAwesomeMap();
+  });
+</script>
+
+<style>
+  #awesome-map .leaflet-top.leaflet-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+  }
+
+  #awesome-map .leaflet-control-layers {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  #awesome-map .leaflet-control-layers.awesome_map-filters-hidden {
+    display: none;
+  }
+
+  #awesome-map .awesome_map-filters-toggle-control {
+    margin-top: 0;
+  }
+
+  #awesome-map .awesome_map-filters-toggle {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: #fff;
+    color: #2c3943;
+    cursor: pointer;
+    line-height: 30px;
+  }
+
+  #awesome-map .awesome_map-filters-toggle.active {
+    background: #f3f4f6;
+  }
+
+  #awesome-map .awesome_map-filters-toggle svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  #awesome_map-district-councils-control {
+    display: block;
+  }
+
+  #awesome_map-budget-years-control {
+    display: block;
+  }
+
+  #awesome_map-district-councils-control .district-councils-container,
+  #awesome_map-budget-years-control .budget-years-container {
+    display: none;
+    overflow-y: visible;
+  }
+
+  #awesome_map-district-councils-control.active .district-councils-container {
+    display: block;
+  }
+
+  #awesome_map-budget-years-control.active .budget-years-container {
+    display: block;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-group,
+  #awesome_map-budget-years-control .awesome_map-budget-year-group {
+    margin-bottom: 0.5rem;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-filter-group-header,
+  #awesome_map-budget-years-control .awesome_map-filter-group-header {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-group-toggle,
+  #awesome_map-budget-years-control .awesome_map-group-toggle {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    line-height: 1;
+    cursor: pointer;
+    color: inherit;
+    flex: 0 0 auto;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-group-toggle-icon,
+  #awesome_map-budget-years-control .awesome_map-group-toggle-icon {
+    display: inline-block;
+    transition: transform 0.15s ease;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-group:not(.active) .awesome_map-group-toggle-icon,
+  #awesome_map-budget-years-control .awesome_map-budget-year-group:not(.active) .awesome_map-group-toggle-icon {
+    transform: rotate(-90deg);
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-root,
+  #awesome_map-district-councils-control .awesome_map-district-council-marker,
+  #awesome_map-budget-years-control .awesome_map-budget-year-root,
+  #awesome_map-budget-years-control .awesome_map-budget-year-marker {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: 0;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-root,
+  #awesome_map-budget-years-control .awesome_map-budget-year-root {
+    font-weight: 600;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-markers,
+  #awesome_map-budget-years-control .awesome_map-budget-year-markers {
+    margin-top: 0.3rem;
+    padding-left: 1.2rem;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-group:not(.active) .awesome_map-district-council-markers,
+  #awesome_map-budget-years-control .awesome_map-budget-year-group:not(.active) .awesome_map-budget-year-markers {
+    display: none;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-marker,
+  #awesome_map-budget-years-control .awesome_map-budget-year-marker {
+    font-weight: 400;
+    margin-bottom: 0.3rem;
+  }
+
+  #awesome_map-district-councils-control .awesome_map-district-council-swatch {
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 50%;
+    border: 1px solid #111;
+    flex: 0 0 auto;
+  }
+</style>
