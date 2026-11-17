@@ -4,7 +4,7 @@ source 'https://rubygems.org'
 
 ruby '3.3.4'
 
-DECIDIM_VERSION = { git: "https://github.com/decidim/decidim.git", tag: "v0.30.5" }.freeze
+DECIDIM_VERSION = { git: "https://github.com/decidim/decidim.git", tag: "v0.30.9" }.freeze
 
 gem 'dotenv-rails', '~> 2.1', '>= 2.1.1'
 gem 'decidim', DECIDIM_VERSION
