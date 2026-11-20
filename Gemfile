@@ -2,7 +2,7 @@
 
 source 'https://rubygems.org'
 
-ruby '3.3.4'
+ruby '3.3.14'
 
 DECIDIM_VERSION = { git: "https://github.com/decidim/decidim.git", tag: "v0.30.5" }.freeze
 
